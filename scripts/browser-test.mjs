@@ -34,6 +34,7 @@ try {
   await activePage.locator('.hand-stone').first().click();await activePage.locator('[data-cell="0"]').click();await activePage.locator('.empty-hand').waitFor();
   await activePage.locator('[data-do="sage"]').click();await activePage.locator('.square.destination').first().click();
   await activePage.locator('[data-do="end"]').click();
+  await activePage.locator('.game-heading .eyebrow').filter({hasText:'TURN 02'}).waitFor();
   const after=await snapshot(activePage);assert.equal(after.game.turn,2);
   await host.reload();await host.locator('.board-section').waitFor();assert.deepEqual((await snapshot(host)).game,after.game);
   await host.screenshot({path:resolve(output,'game-desktop.png'),fullPage:true});
