@@ -1,0 +1,9 @@
+project_id = "element-table"
+
+[functions.table]
+# Authentication is verified against /auth/v1/user inside the handler, supporting
+# current asymmetric signing keys as well as anonymous authenticated players.
+verify_jwt = false
+
+[auth]
+enable_anonymous_sign_ins = true
