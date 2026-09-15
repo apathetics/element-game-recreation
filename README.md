@@ -118,6 +118,8 @@ node scripts/browser-test.mjs
 
 Alternatively set `BROWSER_CHANNEL=chrome` to use installed Chrome. `PLAYWRIGHT_MODULE` may point to an existing Playwright `index.mjs` installation. Screenshots are written to the ignored `test-results/` directory. These checks exercise four-player creation/join, draw/place/move/end, reload, host departure, temporary network loss, mobile layouts, the rules dialog, and river preview/confirmation.
 
+Use `BROWSER_ENGINE=webkit` (without `BROWSER_CHANNEL`) after installing Playwright's WebKit browser to check Safari's rendering engine. The browser checks also verify that board tokens remain square and leave space inside their cells on desktop and mobile.
+
 ### Practical limits
 
 - Rules previews mark geometrically eligible placements. Final validation also checks complete river effects and self-trapping; a highlighted placement can still be rejected for those reasons.

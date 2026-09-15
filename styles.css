@@ -431,12 +431,15 @@ input::placeholder {
 .board {
   display:grid;
   grid-template-columns:repeat(11,minmax(0,1fr));
+  grid-template-rows:repeat(11,minmax(0,1fr));
   aspect-ratio:1;
   background:#d4d4b6;
   border:1px solid #a7b29a;
 }
 
 .square {
+  -webkit-appearance:none;
+  appearance:none;
   border:0;
   border-right:1px solid #6e806626;
   border-bottom:1px solid #6e806626;
@@ -445,10 +448,20 @@ input::placeholder {
   align-items:center;
   justify-content:center;
   position:relative;
-  padding:8%;
+  padding:0;
   min-width:0;
   min-height:0;
   background:#d8dbc0;
+}
+
+/* Equal insets avoid Safari resolving a flex child's percentage height
+   against the full button height while its width excludes padding. */
+.square>.stone,
+.square>.sage {
+  position:absolute;
+  inset:8%;
+  width:auto;
+  height:auto;
 }
 
 .square.alt {
@@ -2193,8 +2206,9 @@ dialog::backdrop {
     bottom:-3px;
     right:-3px;
   }
-  .square {
-    padding:10%;
+  .square>.stone,
+  .square>.sage {
+    inset:10%;
   }
   .square.active-sage .sage {
     outline-width:1px;

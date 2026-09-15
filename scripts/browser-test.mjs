@@ -3,8 +3,8 @@
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
-const { chromium } = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
-const browser = await chromium.launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
+const engines = await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const browser = await engines[process.env.BROWSER_ENGINE || 'chromium'].launch({ headless: true, ...(process.env.BROWSER_CHANNEL ? { channel: process.env.BROWSER_CHANNEL } : {}) });
 const base=process.env.ELEMENT_TEST_URL || 'http://127.0.0.1:8787';
 const output=resolve('test-results');await mkdir(output,{recursive:true});
 const errors=[];
@@ -13,6 +13,17 @@ async function pageFor(viewport={width:1440,height:1100}){
   page.on('pageerror',e=>errors.push(e.message));await page.goto(base);await page.locator('#nickname').waitFor();return {page,context};
 }
 async function saved(page){return await page.evaluate(()=>JSON.parse(localStorage.getItem('element-table-v1')));}
+async function checkTokenSizing(page){
+  const sizes=await page.locator('.board .stone, .board .sage').evaluateAll(nodes=>nodes.map(node=>{
+    const token=node.getBoundingClientRect(),cell=node.parentElement.getBoundingClientRect();
+    return {width:token.width,height:token.height,cellWidth:cell.width,cellHeight:cell.height};
+  }));
+  assert.ok(sizes.length>0);
+  for(const s of sizes){
+    assert.ok(Math.abs(s.width-s.height)<0.2,`Token must stay square: ${JSON.stringify(s)}`);
+    assert.ok(s.width<s.cellWidth*.86 && s.height<s.cellHeight*.86,'Tokens must leave space inside their cells');
+  }
+}
 async function snapshot(page){return await page.evaluate(async()=>{const code=JSON.parse(localStorage.getItem('element-table-v1')).code;return await (await import('./src/api.js')).getRoom(code);});}
 try {
   const clients=await Promise.all(Array.from({length:4},()=>pageFor()));
@@ -38,6 +49,7 @@ try {
   const after=await snapshot(activePage);assert.equal(after.game.turn,2);
   await host.reload();await host.locator('.board-section').waitFor();assert.deepEqual((await snapshot(host)).game,after.game);
   await host.screenshot({path:resolve(output,'game-desktop.png'),fullPage:true});
+  await checkTokenSizing(host);
   // Host departure does not stop other players or discard the table.
   await host.close();
   const surviving=clients.find(c=>c.page!==host);assert.equal((await snapshot(surviving.page)).game.turn,2);
@@ -49,6 +61,7 @@ try {
   assert.equal(await mobile.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await mobile.page.locator('#nickname').fill('Willow');await mobile.page.locator('[data-do="local"]').click();await mobile.page.locator('[data-do="start"]').click();await mobile.page.locator('.board-section').waitFor();
   await mobile.page.screenshot({path:resolve(output,'game-mobile.png'),fullPage:true});
+  await checkTokenSizing(mobile.page);
   assert.equal(await mobile.page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
   await mobile.page.getByRole('button',{name:'Element guide'}).click();await mobile.page.locator('dialog[open]').waitFor();assert.ok(await mobile.page.getByText('AGREED HOUSE RULES',{exact:true}).isVisible());await mobile.page.locator('[data-do="close-rules"]').click();
   // Load a controlled local position to exercise the river-preview UI.
