@@ -23,12 +23,12 @@ const icons = {
   check: '<path d="m7 16 6 6 13-14"/>'
 };
 function icon(name, cls = '') { return `<svg class="icon ${cls}" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name] || icons.mark}</svg>`; }
-const descriptions = { fire: 'Spread beyond a line of fire.', water: 'Form a river. Choose where it flows.', earth: 'Stack two stones to build a mountain.', wind: 'Give your Sage a free leap.' };
 let saved = null; try { saved = JSON.parse(localStorage.getItem('element-table-v1')); } catch { /* fresh session */ }
 let me = null, room = null, mode = null, busy = false, selected = null, draft = null, drawCount = 4, offline = false;
 let nickname = ''; try { nickname = localStorage.getItem('element-nickname') || ''; } catch { /* no saved name */ }
 let capacity = 2, pollTimer, noticeTimer;
 let lastFeedback = null, feedbackRoom = null, feedbackTimer;
+let pendingGame = null;
 function presentFeedback(feedback, sound = feedback?.sound || feedback?.kind) {
   if (!feedback) return;
   clearTimeout(feedbackTimer);
@@ -40,10 +40,12 @@ function presentFeedback(feedback, sound = feedback?.sound || feedback?.kind) {
   if (sound) playSound(sound);
 }
 function rememberFeedback(feedback) { if (feedback && (feedback.cells.length || !lastFeedback || feedbackRoom !== room?.code)) { lastFeedback = feedback; feedbackRoom = room?.code; } }
-function feedbackSettings() { return `<details class="feedback-settings"><summary>Sound & motion</summary><div><label><input type="checkbox" data-pref="sound" ${preferences.sound ? 'checked' : ''}> Play sound cues</label><label>Volume <input type="range" data-pref="volume" min="0" max="60" value="${preferences.volume * 100}" aria-label="Sound volume"></label><label><input type="checkbox" data-pref="reduced" ${preferences.reduced ? 'checked' : ''}> Reduced motion</label><small>Sage steps use Quiet brush.</small></div></details>`; }
+function feedbackSettings() { return `<details class="feedback-settings"><summary>Sound & motion</summary><div><label><input type="checkbox" data-pref="sound" ${preferences.sound ? 'checked' : ''}> Play sound cues</label><label>Volume <input type="range" data-pref="volume" min="0" max="60" value="${preferences.volume * 100}" aria-label="Sound volume"></label><label><input type="checkbox" data-pref="reduced" ${preferences.reduced ? 'checked' : ''}> Reduced motion</label></div></details>`; }
 const inviteCode = new URLSearchParams(location.hash.slice(1)).get('room')?.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 8) || '';
 let inputCode = inviteCode;
-const game = () => room?.game;
+const game = () => pendingGame || room?.game;
+// Database JSON can reorder object keys without changing the game.
+const gameSnapshot = value => JSON.stringify(value, (_, entry) => entry && typeof entry === 'object' && !Array.isArray(entry) ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry);
 const active = () => game()?.players[game().active];
 const mine = () => mode === 'local' || active()?.id === me;
 function persist() {
@@ -86,7 +88,7 @@ function boardMarkup(g, decorative = false) {
   }
   if (draft?.kind === 'fire') fireTargets = new Set(draft.options);
   const selectedTargets = new Set(draft?.kind === 'fire' ? draft.fire : draft?.path || []);
-  let html = `<div class="board-frame ${decorative ? 'decorative' : ''}">${replacementFrame()}<div class="board" ${decorative ? 'aria-hidden="true"' : 'role="group" aria-label="Element board. Use arrow keys to navigate spaces."'}>`;
+  let html = `<div class="board-frame ${decorative ? 'decorative' : ''} ${pendingGame && !decorative ? 'is-saving' : ''}">${replacementFrame()}<div class="board" ${decorative ? 'aria-hidden="true"' : `role="group" aria-busy="${!!pendingGame}" aria-label="Element board. Use arrow keys to navigate spaces."`}>`;
   for (let i = 0; i < SIZE * SIZE; i++) {
     const p = g.players.find(p => p.pos === i), cell = g.board[i];
     const candidate = !decorative && mine() && !draft && g.phase === 'play' && ELEMENTS.includes(selected) && canPlace(g, selected, i, ranges);
@@ -121,7 +123,7 @@ function controlsMarkup(g) {
 }
 function actionDock(g) {
   const elements = [...new Set(g.hand)];
-  return `<section class="action-dock" aria-label="Your turn controls"><div class="dock-status"><strong>${esc(active().name)}’s turn</strong><span>${g.hand.length} stones · ${g.movesLeft} moves + free jumps</span></div><div class="dock-actions"><div class="hand" aria-label="Your stones">${elements.length ? elements.map(e => `<button class="hand-stone ${selected === e ? 'selected' : ''}" data-element="${e}" aria-label="Select ${e}, ${g.hand.filter(x => x === e).length} remaining" aria-pressed="${selected === e}" ${busy ? 'disabled' : ''}>${stone({element:e,ids:[0]})}<span class="hand-count">${g.hand.filter(x => x === e).length}</span></button>`).join('') : '<span class="empty-hand">Hand clear ✓</span>'}</div><button class="sage-control ${selected === 'sage' ? 'selected' : ''}" data-do="sage" aria-pressed="${selected === 'sage'}" ${busy || !movementOptions(g).length ? 'disabled' : ''}>${sage(active())}<span>Move Sage<small>${g.movesLeft} moves + free jumps</small></span></button><button class="button primary end-turn" data-do="end" ${busy || g.hand.length ? 'disabled' : ''}>End turn ${icon('arrow')}${!g.hand.length && g.movesLeft ? `<small>${g.movesLeft} unused moves</small>` : ''}</button></div><div class="dock-help" role="status" aria-live="polite">${selected === 'sage' ? 'Tap a marked space. Keep tapping to continue moving.' : ELEMENTS.includes(selected) ? `<strong>${selected[0].toUpperCase()+selected.slice(1)} selected.</strong> ${descriptions[selected]} Next element selects automatically.` : !g.hand.length ? 'No moves remain. End your turn when you are ready.' : 'Choose a stone or your Sage.'}</div>${g.hand.length ? '<button class="text-button return-button" data-do="return" '+(busy?'disabled':'')+'>No way to play these stones?</button>' : ''}</section>`;
+  return `<section class="action-dock ${pendingGame ? 'is-saving' : ''}" aria-label="Your turn controls"><div class="dock-status"><strong>${esc(active().name)}’s turn</strong><span>${pendingGame ? '<span class="saving-status" role="status">Saving…</span> ' : ''}${g.hand.length} stones · ${g.movesLeft} moves + free jumps</span></div><div class="dock-actions"><div class="hand" aria-label="Your stones">${elements.length ? elements.map(e => `<button class="hand-stone ${selected === e ? 'selected' : ''}" data-element="${e}" aria-label="Select ${e}, ${g.hand.filter(x => x === e).length} remaining" aria-pressed="${selected === e}" ${busy ? 'disabled' : ''}>${stone({element:e,ids:[0]})}<span class="hand-count">${g.hand.filter(x => x === e).length}</span></button>`).join('') : '<span class="empty-hand">Hand clear ✓</span>'}</div><button class="sage-control ${selected === 'sage' ? 'selected' : ''}" data-do="sage" aria-pressed="${selected === 'sage'}" ${busy || !movementOptions(g).length ? 'disabled' : ''}>${sage(active())}<span>Move Sage<small>${g.movesLeft} moves + free jumps</small></span></button><button class="button primary end-turn" data-do="end" ${busy || g.hand.length ? 'disabled' : ''}>End turn ${icon('arrow')}${!g.hand.length && g.movesLeft ? `<small>${g.movesLeft} unused moves</small>` : ''}</button></div><span class="sr-only" role="status" aria-live="polite">${selected === 'sage' ? 'Sage selected' : ELEMENTS.includes(selected) ? `${selected} selected` : 'No moves remaining'}</span>${g.hand.length ? '<button class="text-button return-button" data-do="return" '+(busy?'disabled':'')+'>No way to play these stones?</button>' : ''}</section>`;
 }
 function draftMarkup(g) {
   const water = draft.kind === 'water', required = water ? draft.line?.length + 1 : draft.required;
@@ -129,11 +131,27 @@ function draftMarkup(g) {
   return `<aside class="controls"><div class="eyebrow">${water ? 'WATER FINDS A WAY' : 'A LIMITED SPARK'}</div><h2>${water ? draft.line ? 'Chart your<br>river.' : 'Choose your<br>river.' : 'Choose where<br>fire spreads.'}</h2><p class="muted">${water ? draft.line ? `Trace ${required} spaces from ${coordinate(draft.pos)}. The river can turn, but cannot cross itself.` : 'This stone touches more than one line of water. Choose which line will flow.' : `Only ${required} fire stone${required === 1 ? '' : 's'} remain in the bag. Choose ${required} highlighted destination${required === 1 ? '' : 's'}.`}</p>${water ? draft.line ? `<div class="path-progress">${Array.from({ length: required }, (_, i) => `<span class="${i < draft.path.length ? 'complete' : ''}">${i + 1}</span>`).join('')}</div><div class="path-description">${[draft.pos, ...draft.path].map(coordinate).join(' → ')}</div>${!ready && !riverNextSteps(g, draft.pos, draft.line, draft.path).length ? '<p class="inline-error">This path is blocked. Go back one space and try another direction.</p>' : ''}` : `<div class="river-choices">${draft.lines.map((line, i) => `<button class="button subtle full" data-line="${i}">Toward ${coordinate(line[0])} <span>${line.length + 1} stones</span></button>`).join('')}</div>` : `<div class="balance-summary"><span><strong>${draft.fire.length} / ${required}</strong>destinations selected</span></div>`}<button class="button primary full" data-do="confirm" ${!ready || busy ? 'disabled' : ''}>${water ? 'Let it flow' : 'Spread the fire'} ${icon('arrow')}</button>${water && draft.line ? '<button class="button subtle full" data-do="back-path">Back one step</button>' : ''}<button class="text-button" data-do="cancel">Cancel placement</button><p class="form-note">This is a preview. Your stone is placed when you confirm.</p></aside>`;
 }
 function gameMarkup(g) {
-  return `<main class="game-layout"><div class="game-heading"><div><div class="eyebrow">${g.phase === 'finished' ? 'THE GAME IS COMPLETE' : `TURN ${String(g.turn).padStart(2, '0')}`}</div><h1>${g.phase === 'finished' ? 'A new balance.' : mine() ? `${esc(active().name)}’s turn` : 'The elements are in motion.'}</h1></div><div class="game-heading-actions">${mode === 'online' ? '<button class="text-button" data-do="copy">Invite link</button>' : '<span class="local-tag">PASS & PLAY</span>'}<button class="text-button" data-do="rules">Element guide</button></div></div>${rosterMarkup(g)}<section class="board-section">${boardMarkup(g)}${controlsMarkup(g)}<div class="board-legend"><span>${icon('earth')} Outlined earth belongs to a protected range</span><span>Moves may be mixed with placements</span></div><details class="history"><summary>At the table <span>${esc(g.log.at(-1))}</span></summary><ol>${g.log.slice().reverse().map(item => `<li>${esc(item)}</li>`).join('')}</ol></details>${lastFeedback && feedbackRoom === room.code ? `<div class="last-move"><button class="text-button" data-do="replay">↻ Replay last action</button><span>${esc(lastFeedback.message)}</span></div>` : ''}</section></main>`;
+  return `<main class="game-layout"><div class="game-heading"><div><div class="eyebrow">${g.phase === 'finished' ? 'THE GAME IS COMPLETE' : `TURN ${String(g.turn).padStart(2, '0')}`}</div><h1>${g.phase === 'finished' ? 'A new balance.' : mine() ? `${esc(active().name)}’s turn` : 'The elements are in motion.'}</h1></div><div class="game-heading-actions">${mode === 'online' ? '<button class="text-button" data-do="copy">Invite link</button>' : '<span class="local-tag">PASS & PLAY</span>'}<button class="text-button" data-do="rules">Element guide</button></div></div>${rosterMarkup(g)}<section class="board-section">${boardMarkup(g)}${controlsMarkup(g)}<div class="board-legend"><span>${icon('earth')} Outlined earth belongs to a protected range</span></div><details class="history"><summary>At the table <span>${esc(g.log.at(-1))}</span></summary><ol>${g.log.slice().reverse().map(item => `<li>${esc(item)}</li>`).join('')}</ol></details>${lastMoveMarkup()}</section></main>`;
 }
-function render() {
+function lastMoveMarkup() {
+  return lastFeedback && feedbackRoom === room?.code ? `<div class="last-move"><button class="text-button" data-do="replay">↻ Replay last action</button><span>${esc(lastFeedback.message)}</span></div>` : '';
+}
+function render({ preserveBoard = false } = {}) {
+  const oldFrame = preserveBoard ? app.querySelector('.board-section>.board-frame') : null;
+  if (oldFrame) {
+    // Keep the board attached: WebKit restarts CSS animations on reattachment.
+    oldFrame.classList.remove('is-saving');
+    oldFrame.querySelector('.board')?.setAttribute('aria-busy', 'false');
+    app.querySelector('.action-dock').outerHTML = actionDock(game());
+    const lastMove = app.querySelector('.last-move');
+    if (lastMove) lastMove.outerHTML = lastMoveMarkup();
+    else app.querySelector('.board-section').insertAdjacentHTML('beforeend', lastMoveMarkup());
+    const connection = app.querySelector('.connection');
+    if (connection) { connection.classList.toggle('disconnected', offline); connection.innerHTML = `<i></i>${mode === 'local' ? 'Shared device' : offline ? 'Reconnecting…' : `Table ${esc(room.code)}`}`; }
+    return;
+  }
   const focus = document.activeElement?.dataset?.cell;
-  app.innerHTML = header() + (room ? room.game ? gameMarkup(room.game) : lobbyMarkup() : homeMarkup()) + `<footer class="site-footer"><span>ELEMENT <span class="footer-dot">·</span> An unofficial digital adaptation</span><span>Original game by Mike Richie <span class="footer-dot">·</span> Rather Dashing Games</span></footer>`;
+  app.innerHTML = header() + (room ? game() ? gameMarkup(game()) : lobbyMarkup() : homeMarkup()) + `<footer class="site-footer"><span>ELEMENT <span class="footer-dot">·</span> An unofficial digital adaptation</span><span>Original game by Mike Richie <span class="footer-dot">·</span> Rather Dashing Games</span></footer>`;
   if (focus !== undefined) app.querySelector(`[data-cell="${focus}"]`)?.focus({ preventScroll: true });
   addResume();
 }
@@ -145,9 +163,23 @@ function readForm() {
 }
 async function mutate(command) {
   if (busy) return;
-  const before = game(), previous = selected;
-  let feedback = null;
-  busy = true; render();
+  const before = room?.game, previous = selected, previousDraft = draft;
+  let feedback = null, prediction = null;
+  // Only deterministic actions are previewed. Draws and victory announcements
+  // wait for the server; no speculative state is saved or sent to other players.
+  if (mode === 'online' && command.type === 'action' && ['place', 'move'].includes(command.action.type)) {
+    try {
+      const next = applyAction(before, me, command.action);
+      if (next.phase !== 'finished') prediction = next;
+    } catch (error) { notify(error.message); return; }
+  }
+  busy = true;
+  if (prediction) {
+    pendingGame = prediction;
+    selected = nextSelection(prediction, previous); draft = null;
+  }
+  render();
+  if (prediction) presentFeedback(describeChange(before, prediction));
   try {
     if (mode === 'local') {
       if (command.type === 'start') room.game = createGame(room.members);
@@ -155,14 +187,29 @@ async function mutate(command) {
       else if (command.type === 'action') room.game = applyAction(room.game, active().id, command.action);
       room.version++;
     } else room = await sendCommand({ ...command, code: room.code, version: room.version });
+    pendingGame = null;
     selected = mine() ? nextSelection(game(), previous) : null; draft = null; offline = false; persist();
     if (!before || !game()) lastFeedback = null;
     feedback = describeChange(before, game()); rememberFeedback(feedback);
   } catch (error) {
+    pendingGame = null; selected = previous; draft = previousDraft;
     notify(error.message);
-    if (mode === 'online') { try { const fresh = await getRoom(room.code); if (fresh.version !== room.version) { draft = null; selected = null; } room = fresh; selected = mine() ? nextSelection(game(), selected) : null; persist(); } catch { offline = true; } }
-  } finally { busy = false; render(); presentFeedback(feedback, command.action?.type === 'end' ? 'end' : feedback?.kind === 'turn' && !mine() ? null : feedback?.sound || feedback?.kind); }
+    if (mode === 'online') {
+      try {
+        const fresh = await getRoom(room.code);
+        if (fresh.version !== room.version) { draft = null; selected = null; }
+        room = fresh; selected = mine() ? nextSelection(game(), selected) : null; persist();
+        feedback = describeChange(before, game()); rememberFeedback(feedback);
+      } catch { offline = true; }
+    }
+  } finally {
+    pendingGame = null; busy = false;
+    const confirmedPreview = prediction && gameSnapshot(prediction) === gameSnapshot(room?.game);
+    render({ preserveBoard: !!confirmedPreview });
+    if (!confirmedPreview) presentFeedback(feedback, command.action?.type === 'end' ? 'end' : feedback?.kind === 'turn' && !mine() ? null : feedback?.sound || feedback?.kind);
+  }
 }
+
 const act = action => mutate({ type: 'action', action });
 async function enterOnline(type) {
   readForm();
@@ -185,9 +232,10 @@ async function poll() {
   try {
     const next = await getRoom(code);
     if (mode !== 'online' || room?.code !== code) return;
+    if (busy) { schedulePoll(); return; }
     if (next.version > room.version) { const feedback = describeChange(game(), next.game); if (!game() || !next.game) lastFeedback = null; room = next; selected = mine() ? nextSelection(game()) : null; draft = null; offline = false; rememberFeedback(feedback); persist(); render(); presentFeedback(feedback, (feedback?.turnChanged || feedback?.kind === 'turn') && mine() ? 'turn' : feedback?.kind === 'turn' ? null : feedback?.sound || feedback?.kind); }
     if (offline) { offline = false; render(); }
-  } catch { if (mode === 'online' && room?.code === code && !offline) { offline = true; render(); } }
+  } catch { if (mode === 'online' && room?.code === code && !offline && !busy) { offline = true; render(); } }
   schedulePoll();
 }
 async function copyInvite() {

@@ -26,6 +26,8 @@ Stop the development server before starting the preview on the same port. Withou
 
 Quick flow selects the first drawn element, keeps repeated stones selected, then advances through the remaining hand. When the hand is empty, Sage movement becomes active. Movement remains selected across paid steps and free wind jumps. River paths and limited-fire choices still require confirmation; End turn remains explicit.
 
+Online placements and Sage moves appear immediately after local validation while the server saves them. A brief settling animation plays once, and the existing token stays in place when confirmation arrives. If a move is rejected, the UI restores the authoritative board. Draws and victory announcements wait for server confirmation. Further actions wait until the current save finishes.
+
 The action bar sits below the board and stays within reach while scrolling on phones. Grouped stones show counts. **Sound & motion** in the header controls optional audio, volume, and reduced motion; preferences are saved on the device. Sage steps use the approved **Quiet brush** cue. Sounds only start after a browser interaction, and hidden tabs are quiet. Each accepted board action has visual feedback and a **Replay last action** button for the latest observed move (replay does not change game state).
 
 ## What is included
@@ -133,6 +135,8 @@ Use `BROWSER_ENGINE=webkit` (without `BROWSER_CHANNEL`) after installing Playwri
 - Intended for private games among friends. No matchmaking, chat, accounts UI, spectators, bots, or timed/asynchronous match management.
 
 Run `node scripts/interaction-browser-test.mjs` with the same browser environment variables for Quick flow, river confirmation, replay, preferences, and responsive action-bar checks.
+
+Run `node scripts/placement-browser-test.mjs` to test immediate feedback while replies are held, rejection rollback, stale-state recovery, and idempotent retries after a lost response.
 
 ## Project map
 

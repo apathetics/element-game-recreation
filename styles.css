@@ -2013,9 +2013,6 @@ dialog::backdrop {
   .board-frame {
     --frame-size:26px;
   }
-  .board-legend>span:last-child {
-    display:none;
-  }
   .game-heading h1 {
     font-size:26px;
   }
@@ -2377,7 +2374,6 @@ dialog::backdrop {
 .dock-actions .sage-control small { font-size:9px; }
 .dock-actions .end-turn { width:auto; min-height:48px; padding:11px 15px; font-size:12px; flex-wrap:wrap; justify-content:center; gap:8px; max-width:150px; }
 .end-turn small { display:block; flex-basis:100%; font-size:9px; font-weight:400; opacity:.8; }
-.dock-help { font-size:11px; color:#65765b; line-height:1.8; margin-top:14px; }
 .action-dock .return-button { padding:8px 0 0; margin-top:4px; font-size:10px; }
 .last-move { display:flex; flex-wrap:wrap; align-items:center; gap:5px 15px; margin-top:12px; font-size:11px; color:var(--muted); }
 .last-move .text-button { font-size:11px; }
@@ -2389,8 +2385,8 @@ dialog::backdrop {
 .feedback-settings input[type=range] { min-width:0; width:130px; }
 .feedback-settings small { font-size:10px; color:var(--muted); }
 .square.action-effect { outline:2px solid #90ab78; outline-offset:-3px; z-index:3; }
-.square.action-effect>.stone { animation:stone-settle .35s ease-out; }
-.square.action-effect[data-effect=earth]>.stone { animation:mountain-rise .4s ease-out; }
+.square.action-effect>.stone { animation:stone-settle .22s cubic-bezier(.2,.8,.2,1); }
+.square.action-effect[data-effect=earth]>.stone { animation:mountain-rise .25s cubic-bezier(.2,.8,.2,1); }
 .square.action-effect[data-effect=step]>.sage { animation:sage-step .32s ease-out; }
 .square.action-effect[data-effect=water]::before,
 .square.action-effect[data-effect=wind]::before,
@@ -2399,7 +2395,7 @@ dialog::backdrop {
 .square.action-effect[data-effect=wind]::before { border:2px solid; border-color:#a190ba transparent #c6b8db; animation:wind-spiral .7s ease-out both; }
 .square.action-effect[data-effect=fire]::before { background:radial-gradient(circle at 20% 30%,#be8150 0 2px,transparent 3px),radial-gradient(circle at 80% 65%,#ccad63 0 3px,transparent 4px); animation:fire-embers .65s ease-out both; }
 .turn-arrived { border-radius:8px; box-shadow:0 0 0 6px #b7cca34a; }
-@keyframes stone-settle { from { scale:.86; translate:0 -4px; } to { scale:1; translate:0 0; } }
+@keyframes stone-settle { from { scale:.82; translate:0 -9px; opacity:.6; } to { scale:1; translate:0 0; opacity:1; } }
 @keyframes mountain-rise { from { scale:.86; translate:0 5px; } to { scale:1; translate:0 0; } }
 @keyframes sage-step { from { scale:.92; } to { scale:1; } }
 @keyframes water-ripple { from { scale:.7; opacity:.7; } to { scale:1.6; opacity:0; } }
@@ -2422,10 +2418,16 @@ dialog::backdrop {
  .dock-actions .sage-control { flex:1; padding:9px; }
  .dock-actions .sage-control>.sage { width:26px; height:28px; }
  .dock-actions .end-turn { font-size:11px; padding:9px 12px; }
- .dock-help { font-size:10px; margin-top:10px; }
  .square { scroll-margin-bottom:240px; }
  .board-section>.controls:has(.draw-options) { display:block; }
  .board-section>.controls { padding:20px; }
  .last-move { font-size:10px; }
 }
 @media(prefers-reduced-motion:reduce) { .action-effect, .action-effect *, .action-effect::before { animation:none!important; } .action-effect::before { display:none; } }
+
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; border:0; }
+.saving-status { color:#6e805e; margin-right:8px; }
+/* Keep pending controls still instead of flashing the entire tray dim. */
+.action-dock.is-saving .hand-stone:disabled,
+.action-dock.is-saving .sage-control:disabled { opacity:1; }
+.board-frame.is-saving .square.action-effect { outline-style:dashed; }
