@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 const root = fileURLToPath(new URL('..', import.meta.url));
 await mkdir(resolve(root, 'dist/src'), { recursive: true });
-for (const file of ['index.html', 'styles.css', 'favicon.svg', 'src/app.js', 'src/api.js', 'src/game.js', 'src/audio.js', 'src/interaction.js']) {
+for (const file of ['index.html', 'styles.css', 'favicon.svg', 'src/app.js', 'src/api.js', 'src/game.js', 'src/rooms.js', 'src/clock.js', 'src/audio.js', 'src/interaction.js']) {
   await copyFile(resolve(root, file), resolve(root, 'dist', file));
 }
 const url = process.env.SUPABASE_URL || '', key = process.env.SUPABASE_PUBLISHABLE_KEY || '';

@@ -27,7 +27,7 @@ function save() {
 }
 const hash = value => createHash('sha256').update(value).digest('hex');
 const mime = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json' };
-function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(value)); }
+function send(res, status, value) { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify({ ...value, serverTime: Date.now() })); }
 async function body(req) {
   let bytes = 0, chunks = [];
   for await (const part of req) { bytes += part.length; if (bytes > 16384) throw new Error('Request is too large.'); chunks.push(part); }
@@ -75,7 +75,7 @@ const server = http.createServer(async (req, res) => {
     }
     const relative = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname).slice(1);
     // Only serve public assets, never local sessions, docs, deployment code, or secrets.
-    if (!/^(index\.html|config\.js|styles\.css|favicon\.svg|src\/(app|api|game|rooms|audio|interaction)\.js)$/.test(relative)) return send(res, 404, { error: 'Not found.' });
+    if (!/^(index\.html|config\.js|styles\.css|favicon\.svg|src\/(app|api|game|rooms|clock|audio|interaction)\.js)$/.test(relative)) return send(res, 404, { error: 'Not found.' });
     const path = resolve(webRoot, relative);
     if (!path.startsWith(webRoot + sep)) return send(res, 403, { error: 'Forbidden.' });
     const content = await readFile(path);

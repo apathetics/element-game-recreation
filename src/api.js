@@ -3,6 +3,8 @@ export const onlineAvailable = config.transport !== 'offline';
 export const environment = config.transport;
 const sessionKey = `element-session-v1:${config.url || config.transport}`;
 let session = null, refreshing = null;
+let clockOffset = 0;
+export const serverNow = () => Date.now() + clockOffset;
 try { session = JSON.parse(localStorage.getItem(sessionKey)); } catch { /* storage unavailable */ }
 function saveSession(value) {
   if (value.access_token && !value.expires_at) value.expires_at = Date.now() / 1000 + value.expires_in;
@@ -21,6 +23,9 @@ async function json(url, options = {}) {
   catch { throw new Error('Connection interrupted. Your last saved move is safe. Reconnect and try again.'); }
   finally { clearTimeout(timer); }
   const data = await response.json().catch(() => ({}));
+  // The timestamp is taken when the server builds its response. Do not count
+  // server processing time as transit time and make the displayed clock early.
+  if (Number.isFinite(data.serverTime)) clockOffset = data.serverTime - Date.now();
   if (!response.ok) { const error = new Error(data.error_description || data.msg || data.error || data.message || 'The table could not be reached.'); error.status = response.status; throw error; }
   return data;
 }

@@ -2431,3 +2431,61 @@ dialog::backdrop {
 .action-dock.is-saving .hand-stone:disabled,
 .action-dock.is-saving .sage-control:disabled { opacity:1; }
 .board-frame.is-saving .square.action-effect { outline-style:dashed; }
+
+/* A dedicated activity column keeps the full board and its controls together. */
+.game-layout { max-width:1440px; grid-template-columns:180px minmax(0,1fr) 230px; }
+.table-sidebar { min-width:0; position:sticky; top:24px; border:1px solid var(--line); border-radius:8px; background:#f8f8f1; overflow:hidden; }
+.shared-draw { padding:22px 18px; }
+.shared-draw .eyebrow { font-size:8px; letter-spacing:1.4px; color:var(--muted); }
+.shared-draw h2 { font-family:inherit; font-size:14px; margin:12px 0 18px; overflow-wrap:anywhere; }
+.drawn-stones { display:flex; flex-wrap:wrap; gap:10px; min-height:42px; align-items:center; }
+.draw-stone { width:38px; height:38px; position:relative; display:block; }
+.draw-stone>.stone { width:100%; height:100%; }
+.draw-stone.played>.stone { opacity:.35; filter:saturate(.5); }
+.played-check { position:absolute; bottom:-3px; right:-4px; background:#e4eadb; border:1px solid #cbd5bd; border-radius:50%; width:16px; height:16px; display:grid; place-items:center; font-size:10px; color:var(--ink); }
+.draw-empty { color:var(--muted); font-size:11px; line-height:1.6; }
+.draw-reveal { animation:draw-reveal .42s cubic-bezier(.18,.85,.35,1.2) both; animation-delay:var(--reveal-delay,0ms); }
+@keyframes draw-reveal { from { opacity:0; transform:translateY(17px) rotate(-14deg) scale(.5); } to { opacity:1; transform:translateY(0) rotate(0) scale(1); } }
+.table-sidebar .history { padding:20px 18px; }
+.table-sidebar .history h2 { font-family:inherit; font-size:13px; font-weight:550; }
+.table-sidebar .history ol { max-height:440px; margin-top:14px; font-size:11px; scrollbar-width:thin; }
+.table-sidebar .history li:first-child { color:var(--ink); }
+.clock-settings { text-align:left; margin:22px 0; padding:18px 0; border-block:1px solid var(--line); }
+.clock-settings select { display:block; width:100%; padding:12px; margin-top:9px; font:inherit; font-size:13px; color:var(--ink); background:var(--white); border:1px solid var(--line); border-radius:5px; }
+.clock-settings .form-note { text-align:left; }
+.player-clock { display:inline-block; margin-top:8px; padding:4px 8px; border:1px solid var(--line); border-radius:4px; background:#f7f8ef; font-size:17px; font-variant-numeric:tabular-nums; color:#63765d; }
+.player-clock.clock-running { background:var(--ink); color:#f4f1df; border-color:var(--ink); }
+.player-clock.clock-low { color:#a34730; border-color:#c59a7b; }
+.player-clock.clock-running.clock-low { color:#fff1dd; background:#a34730; border-color:#a34730; }
+.board { position:relative; }
+.river-overlay { position:absolute; inset:0; pointer-events:none; z-index:8; overflow:hidden; }
+.river-token { position:absolute; left:0; top:0; display:block; }
+.river-token>.stone { width:100%; height:100%; }
+.river-arrival>.stone { visibility:hidden; }
+.river-arrival::before { display:none; }
+@media(max-width:1200px) {
+  .game-layout { max-width:1140px; grid-template-columns:minmax(0,1fr) 220px; }
+  .board-section { grid-column:1; }
+  .table-sidebar { grid-column:2; }
+}
+@media(max-width:850px) {
+  .game-layout { max-width:760px; grid-template-columns:minmax(0,1fr); }
+  .board-section, .table-sidebar { grid-column:1; }
+  .table-sidebar { position:static; width:100%; display:grid; grid-template-columns:1fr 1fr; }
+  .table-sidebar .history { border-top:0; border-left:1px solid var(--line); }
+  .table-sidebar .history ol { max-height:180px; }
+}
+@media(max-width:620px) {
+  .table-sidebar { display:contents; }
+  .game-layout>.game-heading { order:0; }
+  .game-layout>.roster { order:1; }
+  .table-sidebar .shared-draw { order:2; width:100%; display:grid; grid-template-columns:1fr auto; align-items:center; column-gap:10px; border:1px solid var(--line); border-radius:7px; background:#f8f8f1; }
+  .shared-draw .drawn-stones { grid-column:2; grid-row:1/3; gap:6px; }
+  .shared-draw .draw-stone { width:32px; height:32px; }
+  .game-layout>.board-section { order:3; }
+  .table-sidebar .history { order:4; width:100%; }
+  .shared-draw, .table-sidebar .history { padding:16px; }
+  .shared-draw h2 { margin:8px 0 12px; }
+  .table-sidebar .history { border-left:0; border-top:1px solid var(--line); }
+  .player-clock { font-size:14px; padding:3px 6px; margin-top:5px; }
+}

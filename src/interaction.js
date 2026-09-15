@@ -14,16 +14,21 @@ export function describeChange(before, after) {
     return { kind: 'turn', cells: [], message: after.log.at(-1) };
   }
   const turnChanged = before.turn !== after.turn;
+  const drawn = after.drawn && (before.drawn?.turn !== after.drawn.turn || before.drawn?.playerId !== after.drawn.playerId);
+  if (after.riverMotion && after.riverMotion.id !== before.riverMotion?.id) {
+    const river = after.riverMotion;
+    return { kind: 'water', sound: 'water', cells: [...river.sources, ...river.path], river, extinguished: river.path.filter(pos => before.board[pos]?.element === 'fire'), drawn, turnChanged, message: after.log.at(-1) };
+  }
   const moved = after.players.find((p, i) => p.pos !== before.players[i]?.pos);
   if (moved) {
     const old = before.players.find(p => p.id === moved.id);
     const jump = turnChanged ? after.log.at(-1)?.startsWith(`${moved.name} rode the wind to `) : before.movesLeft === after.movesLeft;
-    return { kind: jump ? 'wind' : 'step', cells: [moved.pos], from: old.pos, turnChanged, message: after.log.at(-1) };
+    return { kind: jump ? 'wind' : 'step', cells: [moved.pos], from: old.pos, drawn, turnChanged, message: after.log.at(-1) };
   }
   const cells = after.board.flatMap((cell, i) => JSON.stringify(cell) !== JSON.stringify(before.board[i]) ? [i] : []);
-  if (!cells.length) return turnChanged ? { kind: 'turn', cells: [], message: `${after.players[after.active].name}’s turn.` } : null;
+  if (!cells.length) return drawn ? { kind: 'draw', cells: [], turnChanged, message: after.log.at(-1) } : turnChanged ? { kind: 'turn', cells: [], message: `${after.players[after.active].name}’s turn.` } : null;
   const placed = cells.find(i => after.board[i]);
   const kind = after.board[placed]?.element || 'stone';
   const sound = cells.length > 1 || after.board[placed]?.ids.length > 1 ? kind : 'stone';
-  return { kind, sound, cells, turnChanged, message: after.log.at(-1) };
+  return { kind, sound, cells, drawn, turnChanged, message: after.log.at(-1) };
 }

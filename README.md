@@ -1,6 +1,6 @@
 # Element
 
-A responsive web adaptation of **Element**, the 2–4-player strategy game by Mike Richie, published by Rather Dashing Games. Includes private invite tables, pass-and-play, a rules guide, and the three agreed house rules.
+A responsive web adaptation of **Element**, the 2–4-player strategy game by Mike Richie, published by Rather Dashing Games. Includes private invite tables, pass-and-play, a rules guide, and the agreed house rules.
 
 ## Try it locally
 
@@ -29,6 +29,14 @@ Quick flow selects the first drawn element, keeps repeated stones selected, then
 Online placements and Sage moves appear immediately after local validation while the server saves them. A brief settling animation plays once, and the existing token stays in place when confirmation arrives. If a move is rejected, the UI restores the authoritative board. Draws and victory announcements wait for server confirmation. Further actions wait until the current save finishes.
 
 The action bar sits below the board and stays within reach while scrolling on phones. Grouped stones show counts. **Sound & motion** in the header controls optional audio, volume, and reduced motion; preferences are saved on the device. Sage steps use the approved **Quiet brush** cue. Sounds only start after a browser interaction, and hidden tabs are quiet. Each accepted board action has visual feedback and a **Replay last action** button for the latest observed move (replay does not change game state).
+
+## Table clock and shared activity
+
+The host can choose **No timer**, **5**, **10**, **15**, or **30 minutes per player** in the lobby. The clock starts when the game begins, runs throughout the active player's turn (including drawing and path previews), and switches on **End turn**. There is no increment or disconnect pause. Expiry ends the entire game: the player targeting the timed-out Sage wins, including in three- and four-player games. This is an optional digital house rule.
+
+The server uses its own timestamp to enforce the clock; browser clocks are displays, not authority. A seated client requests an expiry check at zero. If everyone is offline, the next sync or action resolves the overdue game. Remaining time survives refresh and rematches get fresh clocks. Untimed existing tables continue normally.
+
+Everyone sees the current draw, including played-stone indicators. A staggered reveal uses only the server-confirmed draw. The activity sidebar shows the move log to the right on desktop; on phones the draw sits above the board and the log follows it. Rivers animate along their chosen orthogonal route, including extinguishing fire as specified by the published rules. Reduced motion skips these animations, and replay does not change the game.
 
 ## What is included
 
@@ -101,9 +109,9 @@ Use two separate devices or browser profiles. Create a two-player room, join it 
 
 Supabase's Free plan currently includes 500 MB of database storage and 500,000 Edge Function invocations per month. Low-activity projects may pause after a week; resume them through the dashboard before the next game. See [current pricing](https://supabase.com/pricing) and [project pausing](https://supabase.com/docs/guides/platform/free-project-pausing).
 
-Table updates are fetched approximately every **1.8 seconds** while a tab is visible and every **10 seconds** in the background. Polls go directly to the protected database REST API; only mutations invoke the Edge Function. This avoids a separate WebSocket lifecycle and keeps the deployment small. Each mutation uses a version check, so simultaneous actions cannot overwrite one another.
+Table updates are fetched approximately every **1.8 seconds** while a tab is visible and every **10 seconds** in the background. Polls go directly to the protected database REST API; mutations and timed-game clock synchronization invoke the Edge Function. This avoids a separate WebSocket lifecycle and keeps the deployment small. Each mutation uses a version check, so simultaneous actions cannot overwrite one another.
 
-The app retains tables until the project owner removes them. No scheduled cleanup or paid infrastructure is created. Browser storage holds the anonymous session; clearing it or switching browsers loses access to that seat. A disconnected player keeps their seat and their turn waits. There is no turn timer, automatic replacement player, or host migration needed during an active game.
+The app retains tables until the project owner removes them. No scheduled cleanup or paid infrastructure is created. Browser storage holds the anonymous session; clearing it or switching browsers loses access to that seat. A disconnected player keeps their seat. Untimed games wait for them; timed games keep counting down. There is no automatic replacement player or host migration during an active game.
 
 ## Rules and interpretation
 
@@ -132,17 +140,20 @@ Use `BROWSER_ENGINE=webkit` (without `BROWSER_CHANNEL`) after installing Playwri
 
 - Rules previews mark geometrically eligible placements. Final validation also checks complete river effects and self-trapping; a highlighted placement can still be rejected for those reasons.
 - Checking whether stones are completely unplayable explores remaining Sage moves and possible placements. Extremely complex positions use a conservative search budget: if the search is inconclusive, it refuses to return stones instead of granting an incorrect discard. The UI explains this outcome.
-- Intended for private games among friends. No matchmaking, chat, accounts UI, spectators, bots, or timed/asynchronous match management.
+- Intended for private games among friends. No matchmaking, chat, accounts UI, spectators, bots, or asynchronous match scheduling.
 
 Run `node scripts/interaction-browser-test.mjs` with the same browser environment variables for Quick flow, river confirmation, replay, preferences, and responsive action-bar checks.
 
 Run `node scripts/placement-browser-test.mjs` to test immediate feedback while replies are held, rejection rollback, stale-state recovery, and idempotent retries after a lost response.
+
+Run `node scripts/table-browser-test.mjs` (default local port 8793; override with `ELEMENT_TEST_URL`) for lobby clocks, two-player shared draws, draw and river animations, the activity sidebar, reduced motion, and timeout victory.
 
 ## Project map
 
 | Location | Purpose |
 | --- | --- |
 | `src/game.js` | Pure rules engine and validation |
+| `src/clock.js` | Per-player time accounting and timeout victory |
 | `src/rooms.js` | Room commands, ownership, versions and idempotency |
 | `src/app.js`, `styles.css` | Board UI, lobby and rules guide |
 | `src/api.js` | Anonymous sessions, polling and mutations |

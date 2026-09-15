@@ -2,7 +2,7 @@ import { newRoom, commandRoom, publicRoom, makeCode } from '../../../src/rooms.j
 
 export function createHandler({ url, serviceKey, fetchImpl = fetch }) {
 const cors = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': 'authorization, apikey, content-type, x-client-info', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
-function response(status, data) { return new Response(JSON.stringify(data), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }); }
+function response(status, data) { return new Response(JSON.stringify({ ...data, serverTime: Date.now() }), { status, headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } }); }
 async function database(path, method = 'GET', body) {
   const result = await fetchImpl(`${url}/rest/v1/game_rooms${path}`, {
     method, headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, 'Content-Type': 'application/json', Prefer: 'return=representation' },

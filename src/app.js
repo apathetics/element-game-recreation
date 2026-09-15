@@ -1,7 +1,9 @@
 import { SIZE, ELEMENTS, COLORS, at, coordinate, count, createGame, applyAction, canPlace, movementOptions, rangeCells, riverLines, riverNextSteps, fireDestinations, findRiverPath, placementResult } from './game.js';
+import { commandRoom } from './rooms.js';
+import { CLOCK_MINUTES, clockRemaining, formatClock } from './clock.js';
 import { nextSelection, describeChange } from './interaction.js';
 import { preferences, updatePreferences, unlockAudio, playSound, hush } from './audio.js';
-import { onlineAvailable, environment, identity, getRoom, sendCommand } from './api.js';
+import { onlineAvailable, environment, identity, getRoom, sendCommand, serverNow } from './api.js';
 
 const app = document.querySelector('#app'), dialog = document.querySelector('#rules');
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -28,24 +30,67 @@ let me = null, room = null, mode = null, busy = false, selected = null, draft = 
 let nickname = ''; try { nickname = localStorage.getItem('element-nickname') || ''; } catch { /* no saved name */ }
 let capacity = 2, pollTimer, noticeTimer;
 let lastFeedback = null, feedbackRoom = null, feedbackTimer;
-let pendingGame = null;
+let pendingGame = null, stopRiver = () => {}, nextTimeoutCheck = 0;
+const tableNow = () => mode === 'local' ? Date.now() : serverNow();
+function tickClocks() {
+  const g = game(); if (!g?.clock) return;
+  for (const node of app.querySelectorAll('[data-clock]')) {
+    const left = clockRemaining(g, node.dataset.clock, tableNow());
+    node.textContent = formatClock(left);
+    node.classList.toggle('clock-low', left <= 60000);
+    node.classList.toggle('clock-running', g.phase !== 'finished' && node.dataset.clock === g.players[g.active].id);
+  }
+  if (!busy && g.phase !== 'finished' && clockRemaining(g, g.players[g.active].id, tableNow()) === 0 && Date.now() >= nextTimeoutCheck) {
+    nextTimeoutCheck = Date.now() + 2500;
+    mutate({ type: 'timeout' });
+  }
+}
+setInterval(tickClocks, 250);
+function animateRiver(feedback) {
+  stopRiver();
+  if (!feedback.river || preferences.reduced || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const board = app.querySelector('.board'); if (!board) return;
+  const { sources, path } = feedback.river, size = board.getBoundingClientRect().width / SIZE;
+  const overlay = document.createElement('div'); overlay.className = 'river-overlay'; overlay.setAttribute('aria-hidden', 'true'); board.append(overlay);
+  const animations = [], destinations = path.map(pos => board.querySelector(`[data-cell="${pos}"]`));
+  destinations.forEach(node => node?.classList.add('river-arrival'));
+  const point = pos => ({ transform: `translate(${(pos % SIZE + .08) * size}px, ${(Math.floor(pos / SIZE) + .08) * size}px)` });
+  const token = element => { const node = document.createElement('span'); node.className = 'river-token'; node.style.width = node.style.height = `${size * .84}px`; node.innerHTML = stone({element, ids:[0]}); overlay.append(node); return node; };
+  const duration = Math.min(1200, Math.max(480, path.length * 150));
+  const track = [...sources].reverse().concat(path);
+  sources.forEach((_, index) => {
+    const start = sources.length - 1 - index;
+    const node = token('water');
+    animations.push(node.animate(track.slice(start, start + path.length + 1).map(point), { duration, easing: 'linear', fill: 'both' }));
+  });
+  for (const pos of feedback.extinguished || []) {
+    const node = token('fire'); Object.assign(node.style, point(pos));
+    animations.push(node.animate([{opacity:1,scale:1},{opacity:0,scale:.6}], {delay:duration * (path.indexOf(pos) + .5) / path.length, duration:120, fill:'both'}));
+  }
+  const cleanup = () => { animations.forEach(animation => animation.cancel()); overlay.remove(); destinations.forEach(node => node?.classList.remove('river-arrival')); };
+  stopRiver = cleanup;
+  Promise.all(animations.map(animation => animation.finished)).then(cleanup, () => {});
+}
 function presentFeedback(feedback, sound = feedback?.sound || feedback?.kind) {
   if (!feedback) return;
   clearTimeout(feedbackTimer);
+  stopRiver();
   for (const node of document.querySelectorAll('.action-effect')) node.classList.remove('action-effect');
   for (const pos of feedback.cells) { const node = app.querySelector(`[data-cell="${pos}"]`); if (node) { node.dataset.effect = feedback.kind; void node.offsetWidth; node.classList.add('action-effect'); } }
+  if (feedback.kind === 'draw' || feedback.drawn) app.querySelectorAll('.draw-stone').forEach((node, i) => { node.style.setProperty('--reveal-delay', `${i * 110}ms`); node.classList.add('draw-reveal'); });
+  animateRiver(feedback);
   const heading = app.querySelector('.game-heading');
   heading?.classList.toggle('turn-arrived', feedback.kind === 'turn' || feedback.turnChanged);
   feedbackTimer = setTimeout(() => { document.querySelectorAll('.action-effect').forEach(node => node.classList.remove('action-effect')); heading?.classList.remove('turn-arrived'); }, 900);
   if (sound) playSound(sound);
 }
-function rememberFeedback(feedback) { if (feedback && (feedback.cells.length || !lastFeedback || feedbackRoom !== room?.code)) { lastFeedback = feedback; feedbackRoom = room?.code; } }
+function rememberFeedback(feedback) { if (feedback && (feedback.cells.length || feedback.kind === 'draw' || !lastFeedback || feedbackRoom !== room?.code)) { lastFeedback = feedback; feedbackRoom = room?.code; } }
 function feedbackSettings() { return `<details class="feedback-settings"><summary>Sound & motion</summary><div><label><input type="checkbox" data-pref="sound" ${preferences.sound ? 'checked' : ''}> Play sound cues</label><label>Volume <input type="range" data-pref="volume" min="0" max="60" value="${preferences.volume * 100}" aria-label="Sound volume"></label><label><input type="checkbox" data-pref="reduced" ${preferences.reduced ? 'checked' : ''}> Reduced motion</label></div></details>`; }
 const inviteCode = new URLSearchParams(location.hash.slice(1)).get('room')?.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 8) || '';
 let inputCode = inviteCode;
 const game = () => pendingGame || room?.game;
 // Database JSON can reorder object keys without changing the game.
-const gameSnapshot = value => JSON.stringify(value, (_, entry) => entry && typeof entry === 'object' && !Array.isArray(entry) ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry);
+const gameSnapshot = value => JSON.stringify(value, (key, entry) => key === 'clock' ? undefined : entry && typeof entry === 'object' && !Array.isArray(entry) ? Object.fromEntries(Object.entries(entry).sort(([a], [b]) => a.localeCompare(b))) : entry);
 const active = () => game()?.players[game().active];
 const mine = () => mode === 'local' || active()?.id === me;
 function persist() {
@@ -103,15 +148,19 @@ function boardMarkup(g, decorative = false) {
 function homeMarkup() {
   return `<main class="landing"><section class="hero-copy"><div class="eyebrow"><span></span> FOUR ELEMENTS. ENDLESS POSSIBILITIES.</div><h1>Find your<br>element.</h1><p class="hero-description">Shape the world around you. Surround a rival Sage.<br class="desktop-only"> Keep your own path open.</p><div class="table-form"><div class="form-heading"><h2>Gather your Sages</h2><span>02 — 04</span></div><label class="field-label" for="nickname">YOUR NAME</label><input id="nickname" maxlength="24" autocomplete="nickname" placeholder="What should we call you?" value="${esc(nickname)}"><div class="form-row"><span class="field-label">PLAYERS</span><div class="segmented" role="group" aria-label="Number of players">${[2, 3, 4].map(n => `<button data-capacity="${n}" aria-pressed="${n === capacity}" class="${n === capacity ? 'chosen' : ''}">${n}</button>`).join('')}</div></div><button class="button primary full" data-do="create" ${busy || !onlineAvailable ? 'disabled' : ''}>${busy ? 'Opening your table…' : 'Create a private table'} ${icon('arrow')}</button><div class="join-row"><input id="invite-code" aria-label="8-character invite code" placeholder="Enter invite code" maxlength="8" autocapitalize="characters" autocomplete="off" value="${esc(inputCode)}"><button class="button join" data-do="join" ${busy || !onlineAvailable ? 'disabled' : ''}>Join table</button></div>${!onlineAvailable ? '<p class="form-note">Online tables aren’t available here yet. Play together on this device below.</p>' : '<p class="form-note">A private link. A few friends. No accounts needed.</p>'}<button class="text-button local-button" data-do="local" ${busy ? 'disabled' : ''}>${icon('sage')} Play on one device</button></div></section><section class="hero-table" aria-label="An example Element game"><div class="floating-label">A LITTLE STRATEGY.<br><strong>A force of nature.</strong></div>${boardMarkup(sampleGame(), true)}<div class="table-caption"><span class="caption-line"></span> EVERY STONE CHANGES THE LANDSCAPE <span class="caption-line"></span></div></section><section class="element-strip" aria-label="The four elements">${ELEMENTS.map((e, i) => `<div class="element-intro"><span class="element-number">0${i + 1}</span><span class="element-emblem ${e}">${icon(e)}</span><div><h3>${e}</h3><p>${({ fire: 'Make your presence spread.', water: 'Find a new direction.', earth: 'Stand your ground.', wind: 'Leave a way out.' })[e]}</p></div></div>`).join('')}</section></main>`;
 }
+function clockSettings() {
+  const host = mode === 'local' || room.host === me, minutes = room.clockMinutes || 0;
+  return `<div class="clock-settings"><label class="field-label" for="clock-minutes">TIME PER PLAYER</label><select id="clock-minutes" ${!host || busy ? 'disabled' : ''}>${CLOCK_MINUTES.map(value => `<option value="${value}" ${value === minutes ? 'selected' : ''}>${value ? `${value} minutes` : 'No timer'}</option>`).join('')}</select><p class="form-note">${minutes ? 'Runs throughout your turn, including drawing. Running out gives victory to the player targeting your Sage.' : 'Play at your own pace.'}</p></div>`;
+}
 function lobbyMarkup() {
   const isHost = room.host === me || mode === 'local';
-  return `<main class="lobby"><div class="eyebrow">YOUR PRIVATE TABLE</div><h1>A place for<br>every element.</h1><p class="hero-description">${mode === 'local' ? 'Pass the device when your turn is over.' : 'Send an invitation. Your friends can join from any device.'}</p><div class="lobby-card">${mode === 'online' ? `<div class="invite-box"><span class="field-label">INVITE CODE</span><strong>${esc(room.code)}</strong><button class="button subtle" data-do="copy">${icon('link')} Copy invite link</button></div>` : ''}<div class="seats">${Array.from({ length: room.capacity }, (_, i) => { const m = room.members[i]; return `<div class="seat ${m ? 'occupied' : ''}">${sage({ color: COLORS[i] })}<span>${m ? esc(m.name) : 'Waiting for a Sage…'}<small>${m ? m.id === room.host ? 'TABLE CREATOR' : 'READY TO PLAY' : 'OPEN SEAT'}</small></span>${m ? icon('check') : '<span class="waiting-dot"></span>'}</div>`; }).join('')}</div><p class="form-note">${room.members.length} of ${room.capacity} Sages have arrived.</p>${isHost ? `<button class="button primary full" data-do="start" ${busy || room.members.length !== room.capacity ? 'disabled' : ''}>Begin the game ${icon('arrow')}</button>` : '<div class="waiting-message">Waiting for the table creator to begin…</div>'}<button class="text-button" data-do="leave" ${busy ? 'disabled' : ''}>Leave table</button></div></main>`;
+  return `<main class="lobby"><div class="eyebrow">YOUR PRIVATE TABLE</div><h1>A place for<br>every element.</h1><p class="hero-description">${mode === 'local' ? 'Pass the device when your turn is over.' : 'Send an invitation. Your friends can join from any device.'}</p><div class="lobby-card">${mode === 'online' ? `<div class="invite-box"><span class="field-label">INVITE CODE</span><strong>${esc(room.code)}</strong><button class="button subtle" data-do="copy">${icon('link')} Copy invite link</button></div>` : ''}<div class="seats">${Array.from({ length: room.capacity }, (_, i) => { const m = room.members[i]; return `<div class="seat ${m ? 'occupied' : ''}">${sage({ color: COLORS[i] })}<span>${m ? esc(m.name) : 'Waiting for a Sage…'}<small>${m ? m.id === room.host ? 'TABLE CREATOR' : 'READY TO PLAY' : 'OPEN SEAT'}</small></span>${m ? icon('check') : '<span class="waiting-dot"></span>'}</div>`; }).join('')}</div>${clockSettings()}<p class="form-note">${room.members.length} of ${room.capacity} Sages have arrived.</p>${isHost ? `<button class="button primary full" data-do="start" ${busy || room.members.length !== room.capacity ? 'disabled' : ''}>Begin the game ${icon('arrow')}</button>` : '<div class="waiting-message">Waiting for the table creator to begin…</div>'}<button class="text-button" data-do="leave" ${busy ? 'disabled' : ''}>Leave table</button></div></main>`;
 }
 function rosterMarkup(g) {
-  return `<aside class="roster"><div class="eyebrow">THE SAGES</div>${g.players.map((p, i) => `<div class="player-card ${g.active === i ? 'current' : ''} ${g.winners.includes(p.id) ? 'winner' : ''}">${sage(p)}<div><strong>${esc(p.name)}${mode === 'online' && p.id === me ? '<span class="you-label">YOU</span>' : ''}</strong><small>${g.winners.includes(p.id) ? 'VICTORIOUS' : g.active === i && g.phase !== 'finished' ? 'TAKING A TURN' : `TARGET: ${esc(g.players[(i + 1) % g.players.length].name)}`}</small></div>${g.active === i && g.phase !== 'finished' ? '<span class="turn-dot"></span>' : ''}</div>`).join('')}<div class="target-note">${icon('mark')}<p>Surround the Sage to your right.<br>Keep your own escape open.</p></div><div class="bag"><div class="eyebrow">IN THE BAG <span>${Object.values(g.bag).reduce((a, b) => a + b, 0)}</span></div>${ELEMENTS.map(e => `<div>${icon(e, e)}<span>${e}</span><strong>${g.bag[e]}</strong></div>`).join('')}</div></aside>`;
+  return `<aside class="roster"><div class="eyebrow">THE SAGES</div>${g.players.map((p, i) => `<div class="player-card ${g.active === i ? 'current' : ''} ${g.winners.includes(p.id) ? 'winner' : ''}">${sage(p)}<div><strong>${esc(p.name)}${mode === 'online' && p.id === me ? '<span class="you-label">YOU</span>' : ''}</strong><small>${g.winners.includes(p.id) ? 'VICTORIOUS' : g.active === i && g.phase !== 'finished' ? 'TAKING A TURN' : `TARGET: ${esc(g.players[(i + 1) % g.players.length].name)}`}</small>${g.clock ? `<span class="player-clock" data-clock="${esc(p.id)}" aria-label="${esc(p.name)} time remaining">${formatClock(clockRemaining(g, p.id, tableNow()))}</span>` : ''}</div>${g.active === i && g.phase !== 'finished' ? '<span class="turn-dot"></span>' : ''}</div>`).join('')}<div class="target-note">${icon('mark')}<p>Surround the Sage to your right.<br>Keep your own escape open.</p></div><div class="bag"><div class="eyebrow">IN THE BAG <span>${Object.values(g.bag).reduce((a, b) => a + b, 0)}</span></div>${ELEMENTS.map(e => `<div>${icon(e, e)}<span>${e}</span><strong>${g.bag[e]}</strong></div>`).join('')}</div></aside>`;
 }
 function controlsMarkup(g) {
-  if (g.phase === 'finished') return `<aside class="controls victory"><div class="victory-mark">${icon('mark')}</div><div class="eyebrow">BALANCE, RESTORED</div><h2>${g.players.filter(p => g.winners.includes(p.id)).map(p => esc(p.name)).join(' & ')}<br>${g.winners.length > 1 ? 'share the victory.' : 'wins.'}</h2><p>${g.winners.length > 1 ? 'Several Sages were trapped by the same action. The eligible winners share the victory.' : 'An opposing Sage has no escape. The elements have spoken.'}</p>${mode === 'local' || room.host === me ? '<button class="button primary full" data-do="rematch">Play again</button>' : '<p>The table creator can start a rematch.</p>'}<button class="text-button" data-do="home">Back to home</button></aside>`;
+  if (g.phase === 'finished') return `<aside class="controls victory"><div class="victory-mark">${icon('mark')}</div><div class="eyebrow">BALANCE, RESTORED</div><h2>${g.players.filter(p => g.winners.includes(p.id)).map(p => esc(p.name)).join(' & ')}<br>${g.winners.length > 1 ? 'share the victory.' : 'wins.'}</h2><p>${g.finishReason === 'timeout' ? `${esc(g.players.find(p => p.id === g.timedOut)?.name)} ran out of time.` : g.winners.length > 1 ? 'Several Sages were trapped by the same action. The eligible winners share the victory.' : 'An opposing Sage has no escape. The elements have spoken.'}</p>${mode === 'local' || room.host === me ? '<button class="button primary full" data-do="rematch">Play again</button>' : '<p>The table creator can start a rematch.</p>'}<button class="text-button" data-do="home">Back to home</button></aside>`;
   if (!mine()) return `<aside class="controls"><div class="eyebrow">AT THE TABLE</div><h2>${esc(active().name)}<br>is thinking.</h2><div class="waiting-art">${sage(active())}<span></span><span></span><span></span></div><p class="muted">Watch the landscape change. Your turn will arrive soon.</p><div class="rule-note"><h3>Your objective</h3><p>Trap <strong>${esc(g.players[(g.players.findIndex(p => p.id === me) + 1) % g.players.length]?.name)}</strong> by removing every legal move.</p></div></aside>`;
   if (g.phase === 'draw') {
     const total = Object.values(g.bag).reduce((a, b) => a + b, 0), n = Math.min(drawCount, total);
@@ -130,8 +179,15 @@ function draftMarkup(g) {
   const ready = water ? draft.line && draft.path.length === required : draft.fire.length === required;
   return `<aside class="controls"><div class="eyebrow">${water ? 'WATER FINDS A WAY' : 'A LIMITED SPARK'}</div><h2>${water ? draft.line ? 'Chart your<br>river.' : 'Choose your<br>river.' : 'Choose where<br>fire spreads.'}</h2><p class="muted">${water ? draft.line ? `Trace ${required} spaces from ${coordinate(draft.pos)}. The river can turn, but cannot cross itself.` : 'This stone touches more than one line of water. Choose which line will flow.' : `Only ${required} fire stone${required === 1 ? '' : 's'} remain in the bag. Choose ${required} highlighted destination${required === 1 ? '' : 's'}.`}</p>${water ? draft.line ? `<div class="path-progress">${Array.from({ length: required }, (_, i) => `<span class="${i < draft.path.length ? 'complete' : ''}">${i + 1}</span>`).join('')}</div><div class="path-description">${[draft.pos, ...draft.path].map(coordinate).join(' → ')}</div>${!ready && !riverNextSteps(g, draft.pos, draft.line, draft.path).length ? '<p class="inline-error">This path is blocked. Go back one space and try another direction.</p>' : ''}` : `<div class="river-choices">${draft.lines.map((line, i) => `<button class="button subtle full" data-line="${i}">Toward ${coordinate(line[0])} <span>${line.length + 1} stones</span></button>`).join('')}</div>` : `<div class="balance-summary"><span><strong>${draft.fire.length} / ${required}</strong>destinations selected</span></div>`}<button class="button primary full" data-do="confirm" ${!ready || busy ? 'disabled' : ''}>${water ? 'Let it flow' : 'Spread the fire'} ${icon('arrow')}</button>${water && draft.line ? '<button class="button subtle full" data-do="back-path">Back one step</button>' : ''}<button class="text-button" data-do="cancel">Cancel placement</button><p class="form-note">This is a preview. Your stone is placed when you confirm.</p></aside>`;
 }
+function tableSidebar(g) {
+  const draw = g.drawn, current = draw?.turn === g.turn;
+  const remaining = [...g.hand];
+  const stones = draw?.stones || [];
+  const name = g.players.find(p => p.id === draw?.playerId)?.name;
+  return `<aside class="table-sidebar" aria-label="Table activity"><section class="shared-draw"><div class="eyebrow">${draw ? current ? 'THIS TURN’S DRAW' : 'PREVIOUS DRAW' : 'AT THE BAG'}</div><h2>${draw ? `${esc(name)} drew` : `${esc(active().name)} is choosing`}</h2><div class="drawn-stones" aria-label="Drawn stones">${stones.map(element => { const index = current ? remaining.indexOf(element) : -1; if(index >= 0) remaining.splice(index,1); return `<span class="draw-stone ${index < 0 ? 'played' : ''}" aria-label="${element}${index < 0 ? ', played' : ', remaining'}">${stone({element,ids:[0]})}${index < 0 ? '<span class="played-check">✓</span>' : ''}</span>`; }).join('') || `<span class="draw-empty">${draw ? 'No stones · 5 moves' : 'Stones will appear here.'}</span>`}</div></section><section class="history" aria-label="Move log"><h2>Move log</h2><ol>${g.log.slice().reverse().map(item => `<li>${esc(item)}</li>`).join('')}</ol></section></aside>`;
+}
 function gameMarkup(g) {
-  return `<main class="game-layout"><div class="game-heading"><div><div class="eyebrow">${g.phase === 'finished' ? 'THE GAME IS COMPLETE' : `TURN ${String(g.turn).padStart(2, '0')}`}</div><h1>${g.phase === 'finished' ? 'A new balance.' : mine() ? `${esc(active().name)}’s turn` : 'The elements are in motion.'}</h1></div><div class="game-heading-actions">${mode === 'online' ? '<button class="text-button" data-do="copy">Invite link</button>' : '<span class="local-tag">PASS & PLAY</span>'}<button class="text-button" data-do="rules">Element guide</button></div></div>${rosterMarkup(g)}<section class="board-section">${boardMarkup(g)}${controlsMarkup(g)}<div class="board-legend"><span>${icon('earth')} Outlined earth belongs to a protected range</span></div><details class="history"><summary>At the table <span>${esc(g.log.at(-1))}</span></summary><ol>${g.log.slice().reverse().map(item => `<li>${esc(item)}</li>`).join('')}</ol></details>${lastMoveMarkup()}</section></main>`;
+  return `<main class="game-layout"><div class="game-heading"><div><div class="eyebrow">${g.phase === 'finished' ? 'THE GAME IS COMPLETE' : `TURN ${String(g.turn).padStart(2, '0')}`}</div><h1>${g.phase === 'finished' ? 'A new balance.' : mine() ? `${esc(active().name)}’s turn` : 'The elements are in motion.'}</h1></div><div class="game-heading-actions">${mode === 'online' ? '<button class="text-button" data-do="copy">Invite link</button>' : '<span class="local-tag">PASS & PLAY</span>'}<button class="text-button" data-do="rules">Element guide</button></div></div>${rosterMarkup(g)}<section class="board-section">${boardMarkup(g)}${controlsMarkup(g)}<div class="board-legend"><span>${icon('earth')} Outlined earth belongs to a protected range</span></div>${lastMoveMarkup()}</section>${tableSidebar(g)}</main>`;
 }
 function lastMoveMarkup() {
   return lastFeedback && feedbackRoom === room?.code ? `<div class="last-move"><button class="text-button" data-do="replay">↻ Replay last action</button><span>${esc(lastFeedback.message)}</span></div>` : '';
@@ -148,12 +204,14 @@ function render({ preserveBoard = false } = {}) {
     else app.querySelector('.board-section').insertAdjacentHTML('beforeend', lastMoveMarkup());
     const connection = app.querySelector('.connection');
     if (connection) { connection.classList.toggle('disconnected', offline); connection.innerHTML = `<i></i>${mode === 'local' ? 'Shared device' : offline ? 'Reconnecting…' : `Table ${esc(room.code)}`}`; }
+    tickClocks();
     return;
   }
+  stopRiver();
   const focus = document.activeElement?.dataset?.cell;
   app.innerHTML = header() + (room ? game() ? gameMarkup(game()) : lobbyMarkup() : homeMarkup()) + `<footer class="site-footer"><span>ELEMENT <span class="footer-dot">·</span> An unofficial digital adaptation</span><span>Original game by Mike Richie <span class="footer-dot">·</span> Rather Dashing Games</span></footer>`;
   if (focus !== undefined) app.querySelector(`[data-cell="${focus}"]`)?.focus({ preventScroll: true });
-  addResume();
+  addResume(); tickClocks();
 }
 function readForm() {
   nickname = document.querySelector('#nickname')?.value.trim() || nickname;
@@ -182,10 +240,7 @@ async function mutate(command) {
   if (prediction) presentFeedback(describeChange(before, prediction));
   try {
     if (mode === 'local') {
-      if (command.type === 'start') room.game = createGame(room.members);
-      else if (command.type === 'rematch') room.game = null;
-      else if (command.type === 'action') room.game = applyAction(room.game, active().id, command.action);
-      room.version++;
+      room = commandRoom({ ...room, requests: room.requests || [] }, command.type === 'action' ? active().id : room.host, { ...command, version: room.version, requestId: crypto.randomUUID() });
     } else room = await sendCommand({ ...command, code: room.code, version: room.version });
     pendingGame = null;
     selected = mine() ? nextSelection(game(), previous) : null; draft = null; offline = false; persist();
@@ -244,7 +299,7 @@ async function copyInvite() {
   catch { notify(`Invite code: ${room.code}. Share the address in your browser.`, false); }
 }
 function openRules() {
-  dialog.innerHTML = `<div class="rules-header"><div><div class="eyebrow">A FIELD GUIDE</div><h2 id="rules-title">Master the elements.</h2></div><button class="close-dialog" data-do="close-rules" aria-label="Close rules">×</button></div><div class="rules-content"><section><h3>The aim</h3><p>Trap your target’s Sage so it has no legal step or wind jump. In a 3–4-player game, your target is the next Sage clockwise in the player list. Turns go counterclockwise. Trapping someone else’s target gives that target’s owner the victory. You cannot trap your own Sage.</p></section><section><h3>A turn in two parts</h3><ol><li>Choose <strong>0–4 random stones</strong> before seeing them. Your moves equal <strong>5 minus the number drawn</strong>.</li><li>Place every drawn stone and move your Sage in any order. Each element’s effect must finish before your next action. You can leave movement unused.</li></ol><p>After drawing, the first stone is selected. Tap a board space to place it; repeated stones stay selected, then the next element is selected automatically. Movement stays active across steps and free wind jumps. You can switch to your Sage or another element at any time. End turn is always explicit. A river placement is a preview until you confirm its entire path.</p></section><div class="rules-elements">${ELEMENTS.map(e => `<section><h3><span class="element-emblem ${e}">${icon(e)}</span>${e}</h3><p>${({ fire: 'Place beside a straight line of fire to add one free fire stone at its far end. This works in all four orthogonal directions. Free fire replaces wind, but other stones, Sages, and edges stop it. Free stones do not trigger more spreading.', water: 'Add water beside water to form a river. If several lines connect, choose one. From the new stone, trace a clear orthogonal path as long as the river, including the new stone. It can turn and extinguish fire, but cannot cross itself, other stones, Sages, or the board edge. The entire path must be possible.', earth: 'Stack two earth stones to make a mountain. All earth connected to it, including diagonally, becomes a permanent, irreplaceable range. Sages cannot step diagonally through the gap between two range stones. Wind may still carry a Sage over a range when approached from the wind’s side.', wind: 'Jump over adjacent wind to an empty landing space for free. Add the heights of a continuous line of wind to determine the number of spaces jumped over. Wind stacks can be up to four high and can carry you over intervening obstacles. You must land on an empty space. Each wind stone may be used only once per turn.' })[e]}</p></section>`).join('')}</div><section><h3>The replacement cycle</h3><div class="replacement-cycle">${['water', 'fire', 'wind', 'earth'].map(e => `<span class="${e}">${icon(e)} ${e}</span><b>→</b>`).join('')}<span class="water">water</span></div><p>Each element replaces the next. Replaced stones return to the bag. A single fire stone replaces an entire wind stack; protected earth ranges cannot be replaced.</p></section><section class="house-rules"><div class="eyebrow">AGREED HOUSE RULES</div><h3>When the booklet leaves a gap</h3><ol><li><strong>Unplayable stones:</strong> return remaining stones only when no legal continuation can place a stone. Moving your Sage is considered. Returning stones gives no extra movement.</li><li><strong>Fire shortage:</strong> use only fire stones available in the bag. If there are fewer than needed, choose which eligible destinations receive them.</li><li><strong>Simultaneous captures:</strong> eligible winners share victory if the same completed action traps multiple opposing Sages. Self-trapping actions remain illegal.</li></ol><p>These are additions, not official publisher rulings. Element placements and their full effects resolve as one action. Draws are limited by the stones available in the bag.</p></section><section><h3>Playing with friends</h3><p>Create a private table and share its invite link or 8-character code. Keep using the same browser to retain your seat. Refreshes and temporary disconnections are safe: the table saves each completed action. The table creator doesn’t need to keep their browser open. If a player disconnects on their turn, their seat waits for them.</p></section><section><h3>About this adaptation</h3><p>Based on Element’s revised April 2017 base rules. Original game by Mike Richie, published by Rather Dashing Games. Original digital illustrations and interface; not affiliated with or endorsed by the publisher.</p></section></div>`;
+  dialog.innerHTML = `<div class="rules-header"><div><div class="eyebrow">A FIELD GUIDE</div><h2 id="rules-title">Master the elements.</h2></div><button class="close-dialog" data-do="close-rules" aria-label="Close rules">×</button></div><div class="rules-content"><section><h3>The aim</h3><p>Trap your target’s Sage so it has no legal step or wind jump. In a 3–4-player game, your target is the next Sage clockwise in the player list. Turns go counterclockwise. Trapping someone else’s target gives that target’s owner the victory. You cannot trap your own Sage.</p></section><section><h3>A turn in two parts</h3><ol><li>Choose <strong>0–4 random stones</strong> before seeing them. Your moves equal <strong>5 minus the number drawn</strong>.</li><li>Place every drawn stone and move your Sage in any order. Each element’s effect must finish before your next action. You can leave movement unused.</li></ol><p>After drawing, the first stone is selected. Tap a board space to place it; repeated stones stay selected, then the next element is selected automatically. Movement stays active across steps and free wind jumps. You can switch to your Sage or another element at any time. End turn is always explicit. A river placement is a preview until you confirm its entire path.</p></section><div class="rules-elements">${ELEMENTS.map(e => `<section><h3><span class="element-emblem ${e}">${icon(e)}</span>${e}</h3><p>${({ fire: 'Place beside a straight line of fire to add one free fire stone at its far end. This works in all four orthogonal directions. Free fire replaces wind, but other stones, Sages, and edges stop it. Free stones do not trigger more spreading.', water: 'Add water beside water to form a river. If several lines connect, choose one. From the new stone, trace a clear orthogonal path as long as the river, including the new stone. It can turn and extinguish fire, but cannot cross itself, other stones, Sages, or the board edge. The entire path must be possible.', earth: 'Stack two earth stones to make a mountain. All earth connected to it, including diagonally, becomes a permanent, irreplaceable range. Sages cannot step diagonally through the gap between two range stones. Wind may still carry a Sage over a range when approached from the wind’s side.', wind: 'Jump over adjacent wind to an empty landing space for free. Add the heights of a continuous line of wind to determine the number of spaces jumped over. Wind stacks can be up to four high and can carry you over intervening obstacles. You must land on an empty space. Each wind stone may be used only once per turn.' })[e]}</p></section>`).join('')}</div><section><h3>The replacement cycle</h3><div class="replacement-cycle">${['water', 'fire', 'wind', 'earth'].map(e => `<span class="${e}">${icon(e)} ${e}</span><b>→</b>`).join('')}<span class="water">water</span></div><p>Each element replaces the next. Replaced stones return to the bag. A single fire stone replaces an entire wind stack; protected earth ranges cannot be replaced.</p></section><section class="house-rules"><div class="eyebrow">AGREED HOUSE RULES</div><h3>When the booklet leaves a gap</h3><ol><li><strong>Unplayable stones:</strong> return remaining stones only when no legal continuation can place a stone. Moving your Sage is considered. Returning stones gives no extra movement.</li><li><strong>Fire shortage:</strong> use only fire stones available in the bag. If there are fewer than needed, choose which eligible destinations receive them.</li><li><strong>Simultaneous captures:</strong> eligible winners share victory if the same completed action traps multiple opposing Sages. Self-trapping actions remain illegal.</li><li><strong>Optional chess clock:</strong> the host sets each player’s total time in the lobby. Time runs throughout your turn, including drawing and previews, and switches on End turn. There is no increment or disconnect pause. Running out ends the game and the player targeting your Sage wins.</li></ol><p>These are additions, not official publisher rulings. Element placements and their full effects resolve as one action. Draws are limited by the stones available in the bag.</p></section><section><h3>Playing with friends</h3><p>Create a private table and share its invite link or 8-character code. Keep using the same browser to retain your seat. Refreshes and temporary disconnections are safe: the table saves each completed action. The table creator doesn’t need to keep their browser open. A disconnected player keeps their seat. Untimed games wait for them; timed games keep counting down.</p></section><section><h3>About this adaptation</h3><p>Based on Element’s revised April 2017 base rules. Original game by Mike Richie, published by Rather Dashing Games. Original digital illustrations and interface; not affiliated with or endorsed by the publisher.</p></section></div>`;
   dialog.showModal();
 }
 async function cellClick(pos) {
@@ -358,7 +413,7 @@ async function restore(value) {
   if (!value) return;
   try {
     if (value.mode === 'local') { mode = 'local'; room = value.room; me = 'local-0'; }
-    else { me = await identity(); const next = await getRoom(value.code); mode = 'online'; room = next; history.replaceState(null, '', `#room=${room.code}`); schedulePoll(); }
+    else { me = await identity(); let next = await getRoom(value.code); if (next.game?.clock) next = await sendCommand({ type: 'sync', code: value.code }); mode = 'online'; room = next; history.replaceState(null, '', `#room=${room.code}`); schedulePoll(); }
     lastFeedback = null; selected = mine() ? nextSelection(game()) : null; draft = null; render();
   } catch (error) { notify(error.message); addResume(); }
 }
@@ -366,11 +421,14 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden) poll
 document.addEventListener('pointerdown', () => unlockAudio(), { passive: true });
 document.addEventListener('keydown', () => unlockAudio());
 app.addEventListener('change', async event => {
+  if (event.target.id === 'clock-minutes') { await mutate({ type: 'configure', clockMinutes: Number(event.target.value) }); return; }
   const pref = event.target.dataset.pref; if (!pref) return;
   updatePreferences({ [pref]: pref === 'volume' ? Number(event.target.value) / 100 : event.target.checked });
+  if (pref === 'reduced' && preferences.reduced) stopRiver();
   if (pref === 'sound' && preferences.sound) { await unlockAudio(); playSound('step'); }
 });
 app.addEventListener('input', event => { if (event.target.dataset.pref === 'volume') updatePreferences({ volume: Number(event.target.value) / 100 }); });
+window.addEventListener('resize', () => stopRiver());
 window.addEventListener('online', () => poll());
 window.addEventListener('hashchange', () => {
   const code = new URLSearchParams(location.hash.slice(1)).get('room')?.toUpperCase().replace(/[^A-Z2-9]/g, '').slice(0, 8);

@@ -35,6 +35,10 @@ Generate only as many free fire stones as are currently in the bag. If eligible 
 
 Eligible target owners share victory if one completed action traps multiple opposing Sages. An action that also traps the acting Sage remains illegal.
 
+### 4. Optional chess clock
+
+The host chooses Off, 5, 10, 15, or 30 minutes per player before starting. Only the active player's clock runs, including drawing, Sage movement, placement previews, and confirmation. End turn switches the running clock. There is no increment and disconnecting does not pause it. Running out ends the whole game immediately and awards victory to the player whose target is the timed-out Sage (the preceding player in clockwise seating order). The server decides expiry before accepting a late move. Existing untimed tables are unchanged.
+
 ## Resolution boundaries
 
 A placement and its complete elemental effect are one atomic action. River-path and fire-shortage selections are previews; no partial effect is committed. Captures are checked on the resolved board. This prevents animation order or server iteration order from deciding a winner. The game ends immediately after a resolved action produces a capture.
@@ -45,5 +49,5 @@ A placement and its complete elemental effect are one atomic action. River-path 
 - Refreshing restores the last committed action. An unconfirmed path preview is discarded on refresh.
 - Nicknames identify people visually; server-verified anonymous identities own their seats.
 - The creator starts a full table and can open a rematch after the game ends. In the lobby, if the creator leaves, ownership passes to the next seated player.
-- Closing a browser does not remove a seat. Active games wait for a disconnected player's return.
+- Closing a browser does not remove a seat. Untimed games wait for a disconnected player's return; timed games keep counting down.
 - In pass-and-play mode all participants use the same device and the same local save.

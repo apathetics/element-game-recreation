@@ -19,6 +19,7 @@ export function cue(context, destination, name, at = context.currentTime, volume
     source.connect(filter);filter.connect(envelope);envelope.connect(output);source.start(at+delay);sources.push(source);
   }
   switch(name){
+    case 'draw':air(0,.32,1100,.12);tone(520,.12,.14,.10,620);tone(700,.24,.20,.08,780);break;
     case 'stone':tone(540,0,.10,.33,230);air(0,.06,1700,.18);break;
     case 'step':air(0,.18,1400,.18);break;
     case 'fire':air(0,.22,1500,.30);tone(420,0,.13,.13,180);air(.055,.07,2200,.12);break;

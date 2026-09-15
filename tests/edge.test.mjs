@@ -42,6 +42,8 @@ test('production handler validates identity and uses atomic versions under concu
   assert.ok(joins.every(r=>r.status===200));room=rows[0].document;assert.equal(room.members.length,4);assert.equal(rows[0].member_ids.length,4);
   assert.equal((await command(users[4],{type:'action',code:room.code,version:room.version,action:{type:'draw',count:0}})).status,400);
   assert.equal((await command(users[1],{type:'start',code:room.code,version:room.version})).status,400);
+  assert.equal((await command(users[1],{type:'configure',code:room.code,version:room.version,clockMinutes:5})).status,400);
+  room=(await command(users[0],{type:'configure',code:room.code,version:room.version,clockMinutes:5})).room;
   room=(await command(users[0],{type:'start',code:room.code,version:room.version})).room;
   const draw={type:'action',code:room.code,version:room.version,action:{type:'draw',count:4},requestId:randomUUID()};
   const active=room.game.players[room.game.active].id;
@@ -49,5 +51,11 @@ test('production handler validates identity and uses atomic versions under concu
   assert.equal(a.status,200);assert.equal(b.status,200);assert.equal(a.room.version,b.room.version);
   assert.equal(rows[0].document.game.hand.length,4);
   assert.equal((await command(active,{...draw,requestId:randomUUID()})).status,409);
+  rows[0].document.game.clock.startedAt=Date.now()-300001;
+  const expired=await command(users[1],{type:'sync',code:room.code,now:0});
+  assert.equal(expired.room.game.finishReason,'timeout');
+  assert.equal(expired.room.game.clock.remaining[active],0);
+  assert.equal(typeof expired.serverTime,'number');
+  assert.deepEqual(expired.room.game.winners,[expired.room.game.players.at(-1).id]);
   assert.ok(authReads>10);
 });

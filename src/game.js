@@ -143,6 +143,7 @@ export function placementResult(original, action) {
       if (game.board[q]) game.bag.fire += count(game.board[q]);
       game.board[q] = stones[i];
     });
+    game.riverMotion = { id: game.nextId, turn: game.turn, sources: [pos, ...line], path: [...path] };
   }
   if (element === 'fire') {
     const options = fireDestinations(game, pos), required = Math.min(options.length, game.bag.fire);
@@ -226,6 +227,7 @@ export function applyAction(original, playerId, action, random = secureInt) {
       assert(Number.isInteger(choice) && choice >= 0 && choice < total - i, 'Invalid random draw.');
       for (const e of ELEMENTS) { if (choice < game.bag[e]) { game.bag[e]--; game.hand.push(e); break; } choice -= game.bag[e]; }
     }
+    game.drawn = { turn: game.turn, playerId, stones: [...game.hand] };
     game.movesLeft = 5 - n; game.phase = 'play'; log(game, `${name} drew ${n} stone${n === 1 ? '' : 's'} and has ${game.movesLeft} moves.`);
     return game;
   }
