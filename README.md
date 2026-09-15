@@ -22,6 +22,12 @@ npm run preview # Serves the production dist/ build at the same local address
 
 Stop the development server before starting the preview on the same port. Without Supabase settings, the production build supports shared-device play and clearly marks online tables unavailable.
 
+## Turn controls and feedback
+
+Quick flow selects the first drawn element, keeps repeated stones selected, then advances through the remaining hand. When the hand is empty, Sage movement becomes active. Movement remains selected across paid steps and free wind jumps. River paths and limited-fire choices still require confirmation; End turn remains explicit.
+
+The action bar sits below the board and stays within reach while scrolling on phones. Grouped stones show counts. **Sound & motion** in the header controls optional audio, volume, and reduced motion; preferences are saved on the device. Sage steps use the approved **Quiet brush** cue. Sounds only start after a browser interaction, and hidden tabs are quiet. Each accepted board action has visual feedback and a **Replay last action** button for the latest observed move (replay does not change game state).
+
 ## What is included
 
 - 11×11 board; standard 2-, 3-, and 4-player starts; counterclockwise turns and clockwise targets.
@@ -125,6 +131,8 @@ Use `BROWSER_ENGINE=webkit` (without `BROWSER_CHANNEL`) after installing Playwri
 - Rules previews mark geometrically eligible placements. Final validation also checks complete river effects and self-trapping; a highlighted placement can still be rejected for those reasons.
 - Checking whether stones are completely unplayable explores remaining Sage moves and possible placements. Extremely complex positions use a conservative search budget: if the search is inconclusive, it refuses to return stones instead of granting an incorrect discard. The UI explains this outcome.
 - Intended for private games among friends. No matchmaking, chat, accounts UI, spectators, bots, or timed/asynchronous match management.
+
+Run `node scripts/interaction-browser-test.mjs` with the same browser environment variables for Quick flow, river confirmation, replay, preferences, and responsive action-bar checks.
 
 ## Project map
 

@@ -75,7 +75,7 @@ const server = http.createServer(async (req, res) => {
     }
     const relative = decodeURIComponent(url.pathname === '/' ? '/index.html' : url.pathname).slice(1);
     // Only serve public assets, never local sessions, docs, deployment code, or secrets.
-    if (!/^(index\.html|config\.js|styles\.css|favicon\.svg|src\/(app|api|game|rooms)\.js)$/.test(relative)) return send(res, 404, { error: 'Not found.' });
+    if (!/^(index\.html|config\.js|styles\.css|favicon\.svg|src\/(app|api|game|rooms|audio|interaction)\.js)$/.test(relative)) return send(res, 404, { error: 'Not found.' });
     const path = resolve(webRoot, relative);
     if (!path.startsWith(webRoot + sep)) return send(res, 403, { error: 'Forbidden.' });
     const content = await readFile(path);
