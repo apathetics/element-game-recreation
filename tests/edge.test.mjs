@@ -56,6 +56,7 @@ test('production handler validates identity and uses atomic versions under concu
   assert.equal(expired.room.game.finishReason,'timeout');
   assert.equal(expired.room.game.clock.remaining[active],0);
   assert.equal(typeof expired.serverTime,'number');
-  assert.deepEqual(expired.room.game.winners,[expired.room.game.players.at(-1).id]);
+  const finished = expired.room.game;
+  assert.deepEqual(finished.winners,[finished.players[(finished.active - 1 + finished.players.length) % finished.players.length].id]);
   assert.ok(authReads>10);
 });
