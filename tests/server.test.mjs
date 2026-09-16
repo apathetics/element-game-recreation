@@ -36,6 +36,8 @@ test('HTTP multiplayer: four identities, private rooms, version conflicts, retri
   room=(await request('/api/command',sessions[0],{type:'start',code:room.code,version:room.version,requestId:randomUUID()})).body.room;
   const active=sessions.find(s=>s.id===room.game.players[room.game.active].id);
   const draw={type:'action',action:{type:'draw',count:4},code:room.code,version:room.version,requestId:randomUUID()};
+  assert.equal((await request('/api/command',active,draw)).status,400);
+  await new Promise(resolve=>setTimeout(resolve,Math.max(0,room.game.opening.readyAt-Date.now())+10));
   const [first,duplicate]=await Promise.all([request('/api/command',active,draw),request('/api/command',active,draw)]);
   assert.equal(first.status,200);assert.equal(duplicate.status,200);assert.equal(first.body.room.version,duplicate.body.room.version);
   assert.equal((await request('/api/command',active,{...draw,requestId:randomUUID()})).status,409);

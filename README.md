@@ -28,15 +28,17 @@ Quick flow selects the first drawn element, keeps repeated stones selected, then
 
 Online placements and Sage moves appear immediately after local validation while the server saves them. A brief settling animation plays once, and the existing token stays in place when confirmation arrives. If a move is rejected, the UI restores the authoritative board. Draws and victory announcements wait for server confirmation. Further actions wait until the current save finishes.
 
-The action bar sits below the board and stays within reach while scrolling on phones. Grouped stones show counts. **Sound & motion** in the header controls optional audio, volume, and reduced motion; preferences are saved on the device. Sage steps use the approved **Quiet brush** cue. Sounds only start after a browser interaction, and hidden tabs are quiet. Each accepted board action has visual feedback and a **Replay last action** button for the latest observed move (replay does not change game state).
+Desktop draw, placement, and river/fire controls sit beside the board in a viewport-sized layout. On phones, controls sit below the board and remain within reach while scrolling. Grouped stones show counts. **Sound & motion** in the header controls optional audio, volume, and reduced motion; preferences are saved on the device. Sage steps use the approved **Quiet brush** cue. Sounds only start after a browser interaction, and hidden tabs are quiet. Each accepted board action has visual feedback and a **Replay last action** button for the latest observed move (replay does not change game state).
 
 ## Table clock and shared activity
 
-The host can choose **No timer**, **5**, **10**, **15**, or **30 minutes per player** in the lobby. The clock starts when the game begins, runs throughout the active player's turn (including drawing and path previews), and switches on **End turn**. There is no increment or disconnect pause. Expiry ends the entire game: the player targeting the timed-out Sage wins, including in three- and four-player games. This is an optional digital house rule.
+The host can choose **No timer**, **5**, **10**, **15**, or **30 minutes per player** in the lobby. The clock starts after the opening toss reveal, runs throughout the active player's turn (including drawing and path previews), and switches on **End turn**. There is no increment or disconnect pause. Expiry ends the entire game: the player targeting the timed-out Sage wins, including in three- and four-player games. This is an optional digital house rule.
 
 The server uses its own timestamp to enforce the clock; browser clocks are displays, not authority. A seated client requests an expiry check at zero. If everyone is offline, the next sync or action resolves the overdue game. Remaining time survives refresh and rematches get fresh clocks. Untimed existing tables continue normally.
 
 Everyone sees the current draw, including played-stone indicators. A staggered reveal uses only the server-confirmed draw. The activity sidebar shows the move log to the right on desktop; on phones the draw sits above the board and the log follows it. Rivers animate along their chosen orthogonal route, including extinguishing fire as specified by the published rules. Reduced motion skips these animations, and replay does not change the game.
+
+New games open with a visible server-selected toss: Heads/Tails for two players, or an equal-chance starting-Sage draw for three or four. The result is stored once, survives refresh and retries, and appears in the move log. Moves are blocked during the 3.6-second reveal, and that time does not consume anyone's clock. Existing games do not replay the toss.
 
 ## What is included
 
@@ -147,6 +149,8 @@ Run `node scripts/interaction-browser-test.mjs` with the same browser environmen
 Run `node scripts/placement-browser-test.mjs` to test immediate feedback while replies are held, rejection rollback, stale-state recovery, and idempotent retries after a lost response.
 
 Run `node scripts/table-browser-test.mjs` (default local port 8793; override with `ELEMENT_TEST_URL`) for lobby clocks, two-player shared draws, draw and river animations, the activity sidebar, reduced motion, and timeout victory.
+
+Run `node scripts/viewport-browser-test.mjs` (default port 8794) for timer visibility, persistent toss results, and no-scroll desktop draw/play/river/fire controls across six viewport sizes.
 
 ## Project map
 

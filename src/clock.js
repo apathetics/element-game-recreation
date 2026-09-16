@@ -25,6 +25,7 @@ export function settleClock(original, now) {
   return game;
 }
 export function applyTimedAction(original, playerId, action, now, random) {
+  assert(!original.opening || now >= original.opening.readyAt, 'Wait for the opening toss to finish.');
   const timed = settleClock(original, now);
   if (original.phase !== 'finished' && timed.phase === 'finished') return timed;
   const next = applyAction(timed, playerId, action, random);

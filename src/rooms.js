@@ -1,6 +1,7 @@
 import { assert, createGame, secureInt } from './game.js';
 import { CLOCK_MINUTES, startClock, settleClock, clockRemaining, applyTimedAction } from './clock.js';
 export const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+export const OPENING_MS = 3600;
 export const makeCode = (random = secureInt) => Array.from({ length: 8 }, () => CODE_ALPHABET[random(CODE_ALPHABET.length)]).join('');
 export function cleanName(name) {
   assert(typeof name === 'string', 'Enter a nickname.');
@@ -43,7 +44,10 @@ export function commandRoom(original, userId, command, random = secureInt, now =
       assert(room.host === userId, 'Only the table creator can start the game.');
       assert(!room.game, 'The game has already started.');
       assert(room.members.length === room.capacity, 'Wait for every Sage to join.');
-      room.game = startClock(createGame(room.members, random), room.clockMinutes || 0, now); break;
+      room.game = createGame(room.members, random);
+      room.game.opening = { id: command.requestId, winnerId: room.game.players[room.game.active].id, startedAt: now, readyAt: now + OPENING_MS };
+      room.game.log = [`${room.game.players[room.game.active].name} won the opening toss and goes first.`];
+      startClock(room.game, room.clockMinutes || 0, now + OPENING_MS); break;
     case 'action':
       assert(room.game, 'The game has not started.'); room.game = applyTimedAction(room.game, userId, command.action, now, random); break;
     case 'rematch':

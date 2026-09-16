@@ -7,18 +7,21 @@ const browser = await engines[engine].launch({headless:true, ...(process.env.BRO
 const base = process.env.ELEMENT_TEST_URL || 'http://127.0.0.1:8793';
 const errors = [], output = resolve('test-results'); await mkdir(output,{recursive:true});
 async function client() {
- const context=await browser.newContext({viewport:{width:1440,height:1100}}),page=await context.newPage();
+ const context=await browser.newContext({viewport:{width:1280,height:720}}),page=await context.newPage();
  page.on('pageerror',e=>errors.push(e.message));await page.goto(base);await page.locator('#nickname').waitFor();return page;
 }
 try {
  const host=await client(),guest=await client();
- await host.locator('#nickname').fill('Willow');await host.locator('[data-do="create"]').click();await host.locator('#clock-minutes').selectOption('5');
+ await host.locator('#nickname').fill('Willow');await host.locator('[data-do="create"]').click();await host.locator('#clock-minutes').waitFor();assert.equal(await host.locator('#clock-minutes').evaluate(n=>!n.disabled&&n.getBoundingClientRect().bottom<=innerHeight),true,'Host timer must be visible before scrolling');await host.locator('#clock-minutes').selectOption('5');
  await host.waitForFunction(()=>!document.querySelector('#clock-minutes').disabled);
  const code=await host.locator('.invite-box strong').innerText();
  await guest.locator('#nickname').fill('Ochre');await guest.locator('#invite-code').fill(code);await guest.locator('[data-do="join"]').click();
  assert.equal(await guest.locator('#clock-minutes').isDisabled(),true);assert.equal(await guest.locator('#clock-minutes').inputValue(),'5');
  await host.locator('[data-do="start"]').click();
  await Promise.all([host,guest].map(p=>p.locator('.player-clock').first().waitFor()));
+ await Promise.all([host,guest].map(p=>p.locator('.opening-toss').waitFor()));
+ assert.equal(await host.locator('.toss-result strong').innerText(),await guest.locator('.toss-result strong').innerText(),'Both players must see the same toss winner');
+ await Promise.all([host,guest].map(p=>p.locator('.opening-toss').waitFor({state:'detached'})));
  const active=await host.locator('[data-do="draw"]').count()?host:guest, observer=active===host?guest:host;
  await active.evaluate(()=>{window.reveals=0;document.addEventListener('animationstart',e=>{if(e.animationName==='draw-reveal')window.reveals++;});});
  await observer.evaluate(()=>{window.reveals=0;document.addEventListener('animationstart',e=>{if(e.animationName==='draw-reveal')window.reveals++;});});

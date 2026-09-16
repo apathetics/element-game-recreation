@@ -37,7 +37,7 @@ Eligible target owners share victory if one completed action traps multiple oppo
 
 ### 4. Optional chess clock
 
-The host chooses Off, 5, 10, 15, or 30 minutes per player before starting. Only the active player's clock runs, including drawing, Sage movement, placement previews, and confirmation. End turn switches the running clock. There is no increment and disconnecting does not pause it. Running out ends the whole game immediately and awards victory to the player whose target is the timed-out Sage (the preceding player in clockwise seating order). The server decides expiry before accepting a late move. Existing untimed tables are unchanged.
+The host chooses Off, 5, 10, 15, or 30 minutes per player before starting. The opening toss is revealed before any clock runs or moves are accepted. Only the active player's clock runs, including drawing, Sage movement, placement previews, and confirmation. End turn switches the running clock. There is no increment and disconnecting does not pause it. Running out ends the whole game immediately and awards victory to the player whose target is the timed-out Sage (the preceding player in clockwise seating order). The server decides expiry before accepting a late move. Existing untimed tables are unchanged.
 
 ## Resolution boundaries
 

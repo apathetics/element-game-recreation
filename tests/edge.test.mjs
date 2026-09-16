@@ -45,6 +45,8 @@ test('production handler validates identity and uses atomic versions under concu
   assert.equal((await command(users[1],{type:'configure',code:room.code,version:room.version,clockMinutes:5})).status,400);
   room=(await command(users[0],{type:'configure',code:room.code,version:room.version,clockMinutes:5})).room;
   room=(await command(users[0],{type:'start',code:room.code,version:room.version})).room;
+  rows[0].document.game.opening.readyAt=Date.now()-1;
+  rows[0].document.game.clock.startedAt=Date.now();
   const draw={type:'action',code:room.code,version:room.version,action:{type:'draw',count:4},requestId:randomUUID()};
   const active=room.game.players[room.game.active].id;
   const [a,b]=await Promise.all([command(active,draw),command(active,draw)]);
