@@ -658,7 +658,7 @@ input::placeholder {
   height:100%;
   border-radius:34% 34% 42% 42%;
   position:relative;
-  background:linear-gradient(140deg,#527d60,#2c5843);
+  background:linear-gradient(140deg,#36765d,#164b39);
   border:1px solid #1e4b3488;
   box-shadow:0 3px 1px #18362bbb,0 6px 6px #29412f45;
   color:#e9ebc5;
@@ -674,7 +674,7 @@ input::placeholder {
 }
 
 .sage.ochre {
-  background:linear-gradient(140deg,#d4b575,#9e783e);
+  background:linear-gradient(140deg,#dab36b,#987033);
   border-color:#926334;
   color:#fff0b9;
 }
@@ -684,7 +684,7 @@ input::placeholder {
 }
 
 .sage.ivory {
-  background:linear-gradient(140deg,#faf3de,#b6bcb0);
+  background:linear-gradient(140deg,#fff7df,#d4c9ac);
   border-color:#979d8a;
   color:#fffbea;
 }
@@ -694,13 +694,19 @@ input::placeholder {
 }
 
 .sage.slate {
-  background:linear-gradient(140deg,#748286,#425a5e);
+  background:linear-gradient(140deg,#52748a,#294b64);
   border-color:#344b4f;
   color:#cfddcf;
 }
 
 .sage.slate>.icon {
   stroke:#304746;
+}
+
+/* Ivory rim keeps Sages distinct from stones without enlarging their footprint. */
+.square>.sage {
+  border:2px solid #fff7dd;
+  box-shadow:0 0 0 1.5px #243f35,0 3px 0 1px #243f35,0 5px 5px #203e3855;
 }
 
 .table-caption {
@@ -1195,9 +1201,21 @@ input::placeholder {
   outline-offset:2px;
 }
 
-.square.active-sage .sage {
-  outline:2px solid #ead08c;
-  outline-offset:2px;
+.square.active-sage {
+  background:radial-gradient(ellipse,#fff9dc 18%,#dfd6a2 65%,#ccd1b1);
+}
+
+.square.active-sage::after {
+  content:'';
+  position:absolute;
+  width:10px;
+  height:7px;
+  top:-4px;
+  left:calc(50% - 5px);
+  background:#203e38;
+  clip-path:polygon(0 0,100% 0,50% 100%);
+  z-index:7;
+  pointer-events:none;
 }
 
 .move-dot {
@@ -2206,10 +2224,6 @@ dialog::backdrop {
   .square>.stone,
   .square>.sage {
     inset:10%;
-  }
-  .square.active-sage .sage {
-    outline-width:1px;
-    outline-offset:1px;
   }
   .square.protected .stone {
     outline-offset:1px;
